@@ -77,6 +77,24 @@ spec:
                   type: object
                   properties:
                     releaseName: {type: string, minLength: 1}
+                schedule:
+                  type: object
+                  description: Upgrade windows. New chart versions are exported only inside a window.
+                  properties:
+                    windows:
+                      type: array
+                      items:
+                        type: object
+                        required: [cron, window]
+                        # A zero window turns the whole schedule off in the RSIP; one under 2x its 2m timeout stalls it (flux-operator internal/schedule/scheduler.go:51-56).
+                        x-kubernetes-validations:
+                          - rule: "duration(self.window) >= duration('4m')"
+                            message: window must be at least 4m (a zero window disables the schedule)
+                        properties:
+                          cron: {type: string, minLength: 1}
+                          timeZone: {type: string}
+                          window: {type: string, pattern: '^([0-9]+(\.[0-9]+)?(ms|s|m|h))+$', description: "Go duration, for example 4h"}
+                    forceInstallOutsideWindow: {type: boolean, description: Install the first version at once, outside a window}
                 namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
             status:
               type: object

@@ -46,14 +46,20 @@ _helmrelease = lambda t -> {str:} {
     }
 }
 
+_windows = spec.schedule?.windows or []
+# Day 0: requestedAt == forceAt makes the RSIP skip its schedule check once (fluxcd/pkg apis/meta annotations.go:126-141); see docs/schedule.md.
+_day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/forceAt" = "day-0"} if _windows and spec.schedule?.forceInstallOutsideWindow else {}
+
 _rsip = {
     apiVersion = FLUX_CP
     kind = "ResourceSetInputProvider"
-    metadata = {name = name, namespace = ns, annotations = _annot("rsip")}
+    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0}
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
         "filter" = {semver = spec.chart.version}
+        if _windows:
+            schedule = _windows
     }
 }
 
@@ -110,11 +116,14 @@ _target = lambda t -> {str:} {
 }
 _targets = [_target(t) for t in spec.targets.static]
 
+_next = _ocds?.rsip?.Resource?.status?.nextSchedule?.when
 _status = {
     # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
     version = (_exported or [{}])[0]?.tag or ([t.version for t in _targets if t.version] or [""])[0]
     message = "Waiting for the input provider." if not _ocds?.rsip else "" if _exported else "No chart version exported for \"${spec.chart.version}\" (no matching tag, or waiting for the schedule). Existing HelmReleases are kept."
     targets = _targets
+    # RSIP status.nextSchedule is set only while the schedule skips a run, so this is empty inside a window.
+    **({"nextWindow" = _next} if _next else {})
 }
 
 _dxr = {**option("params").dxr, status = _status}

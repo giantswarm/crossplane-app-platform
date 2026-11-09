@@ -1,0 +1,11 @@
+# RSIP skipped its run (outside the window): status.nextSchedule is set.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+  annotations: {crossplane.io/composition-resource-name: rsip}
+status:
+  conditions: [{type: Ready, status: "True", reason: SkippedDueToSchedule}]
+  exportedInputs: [{id: "1", tag: 3.9.0, digest: "sha256:abc"}]
+  nextSchedule: {cron: "0 2 * * 6", timeZone: Europe/Berlin, window: 4h, when: "2026-11-14T01:00:00Z"}

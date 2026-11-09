@@ -1,0 +1,133 @@
+---
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+spec:
+  crossplane:
+    resourceRefs:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: ingress-nginx
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSet
+      name: ingress-nginx
+status:
+  conditions:
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: WatchCircuitClosed
+    status: "True"
+    type: Responsive
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: ReconcileSuccess
+    status: "True"
+    type: Synced
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    message: 'Unready resources: rset, rsip'
+    reason: Creating
+    status: "False"
+    type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: acme01
+    message: ""
+    ready: false
+    version: ""
+  version: ""
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rset
+  labels:
+    crossplane.io/composite: ingress-nginx
+  name: ingress-nginx
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: ingress-nginx
+    uid: 848c3fa4-eb9c-5784-833d-0b3143ee9184
+spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: ingress-nginx
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
+  inputsFrom:
+  - kind: ResourceSetInputProvider
+    name: ingress-nginx
+  resources:
+  - apiVersion: source.toolkit.fluxcd.io/v1
+    kind: OCIRepository
+    metadata:
+      name: ingress-nginx
+      namespace: org-acme
+    spec:
+      interval: 5m
+      ref:
+        tag: << inputs.tag | quote >>
+      url: oci://gsoci.azurecr.io/charts/giantswarm/ingress-nginx
+      verify:
+        matchOIDCIdentity:
+        - issuer: ^https://oidc\.circleci\.com
+          subject: ^https://circleci\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$
+        provider: cosign
+  - apiVersion: helm.toolkit.fluxcd.io/v2
+    kind: HelmRelease
+    metadata:
+      name: acme01-ingress-nginx
+      namespace: org-acme
+    spec:
+      chartRef:
+        kind: OCIRepository
+        name: ingress-nginx
+      driftDetection:
+        mode: warn
+      install:
+        remediation:
+          retries: 10
+      interval: 5m
+      kubeConfig:
+        secretRef:
+          name: acme01-kubeconfig
+      releaseName: ingress-nginx
+      storageNamespace: kube-system
+      targetNamespace: kube-system
+      upgrade:
+        remediation:
+          retries: 10
+          strategy: rollback
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rsip
+    reconcile.fluxcd.io/forceAt: day-0
+    reconcile.fluxcd.io/requestedAt: day-0
+  labels:
+    crossplane.io/composite: ingress-nginx
+  name: ingress-nginx
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: ingress-nginx
+    uid: 848c3fa4-eb9c-5784-833d-0b3143ee9184
+spec:
+  filter:
+    semver: '>=3.0.0 <4.0.0'
+  schedule:
+  - cron: 0 2 * * 6
+    timeZone: Europe/Berlin
+    window: 4h
+  type: OCIArtifactTag
+  url: oci://gsoci.azurecr.io/charts/giantswarm/ingress-nginx
