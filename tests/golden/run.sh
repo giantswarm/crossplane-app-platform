@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 XP=${CROSSPLANE:-../../bin/crossplane}
 CHART=../../helm/crossplane-app-platform
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-helm template x "$CHART" -s templates/composition.yaml > "$tmp/composition.yaml"
+helm template x "$CHART" -s templates/composition.yaml --set managementCluster=mc01 > "$tmp/composition.yaml"
 rc=0
 for d in */; do
   d=${d%/}

@@ -1,0 +1,12 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: ingress-nginx, namespace: org-acme}
+spec:
+  chart: {name: ingress-nginx, version: ">=3.0.0 <4.0.0"}
+  targets:
+    static: [{cluster: acme01}, {cluster: acme02}, {inCluster: true}]
+  namespace: kube-system
+  helmReleaseOverrides: {releaseName: nginx}
+  dependsOn:
+    static: [mc01-kyverno]
+    templated: ["%cluster%-cert-manager"]
