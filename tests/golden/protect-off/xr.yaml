@@ -1,0 +1,8 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: cluster-aws, namespace: org-acme}
+spec:
+  chart: {name: cluster-aws, version: ">=3.0.0 <4.0.0"}
+  targets:
+    static: [{inCluster: true}]
+  protect: false
