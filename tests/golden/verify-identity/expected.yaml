@@ -103,6 +103,16 @@ spec:
         remediation:
           retries: 10
           strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme02-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme02-podinfo-user-values
+        optional: true
+      - kind: Secret
+        name: acme02-podinfo-user-values
+        optional: true
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSetInputProvider

@@ -113,6 +113,16 @@ spec:
         remediation:
           retries: 10
           strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme01-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme01-ingress-nginx-user-values
+        optional: true
+      - kind: Secret
+        name: acme01-ingress-nginx-user-values
+        optional: true
   - apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
@@ -141,6 +151,16 @@ spec:
         remediation:
           retries: 10
           strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme02-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme02-ingress-nginx-user-values
+        optional: true
+      - kind: Secret
+        name: acme02-ingress-nginx-user-values
+        optional: true
   - apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:

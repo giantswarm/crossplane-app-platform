@@ -13,3 +13,7 @@ test-rbac: ## helm template assertions for the customer RBAC (needs helm, yq).
 .PHONY: test-schedule
 test-schedule: ## Checks the zero-window CEL rule text is in the XRD (needs helm, yq).
 	./tests/schedule/run.sh
+
+.PHONY: test-kcl
+test-kcl: ## KCL unit tests of the values merge function (needs kcl).
+	kcl test ./helm/crossplane-app-platform/files/merge

@@ -22,7 +22,17 @@ FLUX_CP = "fluxcd.controlplane.io/v1"
 
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
 
+# valuesFrom layers, lowest to highest: derived cluster values, global, per target, derived user values; spec.values is applied last by Flux.
+_values_from = lambda t -> [{str:}] {
+    _derived = not t?.inCluster
+    _cluster = [{kind = "ConfigMap", name = "${t.cluster}-cluster-values", optional = True}] if _derived else []
+    _user = [{kind = "ConfigMap", name = "${t.cluster}-${name}-user-values", optional = True}, {kind = "Secret", name = "${t.cluster}-${name}-user-values", optional = True}] if _derived else []
+    _cluster + (spec.valuesFrom or []) + (t.valuesFrom or []) + _user
+}
+
 _helmrelease = lambda t -> {str:} {
+    _vf = _values_from(t)
+    _values = merge_values(spec.values or {}, t.values or {})
     _cluster = MC if t.inCluster else t.cluster
     _deps = [{name = n} for n in spec.dependsOn?.static or []] + [{name = n.replace("%cluster%", _cluster)} for n in spec.dependsOn?.templated or []]
     {
@@ -42,6 +52,10 @@ _helmrelease = lambda t -> {str:} {
             install = {remediation = {retries = 10}}
             upgrade = {remediation = {retries = 10, strategy = "rollback"}}
             driftDetection = {mode = "warn"}
+            if _vf:
+                valuesFrom = _vf
+            if _values:
+                values = _values
         }
     }
 }
