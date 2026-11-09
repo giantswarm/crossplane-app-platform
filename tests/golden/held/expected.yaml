@@ -104,6 +104,16 @@ spec:
         remediation:
           retries: 10
           strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme01-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme01-ingress-nginx-user-values
+        optional: true
+      - kind: Secret
+        name: acme01-ingress-nginx-user-values
+        optional: true
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSetInputProvider

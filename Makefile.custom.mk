@@ -9,3 +9,7 @@ test-golden: ## Golden render tests (needs bin/crossplane v2 CLI, helm, Docker f
 .PHONY: test-rbac
 test-rbac: ## helm template assertions for the customer RBAC (needs helm, yq).
 	./tests/rbac/run.sh
+
+.PHONY: test-kcl
+test-kcl: ## KCL unit tests of the values merge function (needs kcl).
+	kcl test ./helm/crossplane-app-platform/files/merge
