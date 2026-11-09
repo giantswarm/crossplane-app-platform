@@ -34,6 +34,25 @@ spec:
                     name: {type: string, minLength: 1}
                     repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
                     version: {type: string, minLength: 1, description: Exact version or semver range}
+                    verify:
+                      type: object
+                      description: "Cosign verification of the chart. Default: GS CircleCI keyless identity for the GS registry, none elsewhere. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key)."
+                      required: [provider]
+                      properties:
+                        provider: {type: string, enum: [cosign]}
+                        secretRef:
+                          type: object
+                          required: [name]
+                          properties:
+                            name: {type: string, minLength: 1}
+                        matchOIDCIdentity:
+                          type: array
+                          items:
+                            type: object
+                            required: [issuer, subject]
+                            properties:
+                              issuer: {type: string}
+                              subject: {type: string}
                 targets:
                   type: object
                   required: [static]
