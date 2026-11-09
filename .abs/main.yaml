@@ -1,0 +1,5 @@
+replace-chart-version-with-git: true
+generate-metadata: true
+chart-dir: ./helm/crossplane-app-platform
+destination: ./build
+helm-template-extra-values: ./helm/crossplane-app-platform/ci/ci-values.yaml
