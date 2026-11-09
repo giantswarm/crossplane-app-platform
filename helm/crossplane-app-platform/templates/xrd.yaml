@@ -1,0 +1,53 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: helmapps.apps.giantswarm.io
+  labels:
+    {{- include "labels.common" . | nindent 4 }}
+spec:
+  scope: Namespaced
+  group: apps.giantswarm.io
+  names:
+    kind: HelmApp
+    plural: helmapps
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [chart, targets, namespace]
+              properties:
+                chart:
+                  type: object
+                  required: [name, version]
+                  # CEL on a nested object: checked in docs/xrd-cel.md to reach the XR CRD.
+                  x-kubernetes-validations:
+                    - rule: "!self.name.contains('/')"
+                      message: chart.name must not contain a slash
+                  properties:
+                    name: {type: string, minLength: 1}
+                    repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
+                    version: {type: string, minLength: 1, description: Exact version or semver range}
+                targets:
+                  type: object
+                  required: [static]
+                  properties:
+                    static:
+                      type: array
+                      minItems: 1
+                      maxItems: 1 # slice 3 lifts this (multi-target)
+                      items:
+                        type: object
+                        required: [cluster]
+                        properties:
+                          cluster: {type: string, minLength: 1}
+                namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true

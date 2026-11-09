@@ -1,0 +1,11 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "name" . }}-flux-operator
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+    {{- include "labels.common" . | nindent 4 }}
+rules:
+  - apiGroups: [fluxcd.controlplane.io]
+    resources: [resourcesetinputproviders, resourcesets]
+    verbs: ["*"]

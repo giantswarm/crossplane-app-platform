@@ -1,0 +1,109 @@
+---
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: podinfo
+  namespace: org-acme
+spec:
+  crossplane:
+    resourceRefs:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: podinfo
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSet
+      name: podinfo
+status:
+  conditions:
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: WatchCircuitClosed
+    status: "True"
+    type: Responsive
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: ReconcileSuccess
+    status: "True"
+    type: Synced
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    message: 'Unready resources: rset, rsip'
+    reason: Creating
+    status: "False"
+    type: Ready
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rset
+  labels:
+    crossplane.io/composite: podinfo
+  name: podinfo
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: podinfo
+    uid: 02ccd374-3fc0-5e17-959e-ac0bbb50737f
+spec:
+  inputsFrom:
+  - kind: ResourceSetInputProvider
+    name: podinfo
+  resources:
+  - apiVersion: source.toolkit.fluxcd.io/v1
+    kind: OCIRepository
+    metadata:
+      name: podinfo
+      namespace: org-acme
+    spec:
+      interval: 5m
+      ref:
+        tag: << inputs.tag | quote >>
+      url: oci://ghcr.io/stefanprodan/charts/podinfo
+  - apiVersion: helm.toolkit.fluxcd.io/v2
+    kind: HelmRelease
+    metadata:
+      name: acme02-podinfo
+      namespace: org-acme
+    spec:
+      chartRef:
+        kind: OCIRepository
+        name: podinfo
+      driftDetection:
+        mode: warn
+      install:
+        remediation:
+          retries: 10
+      interval: 5m
+      kubeConfig:
+        secretRef:
+          name: acme02-kubeconfig
+      releaseName: podinfo
+      storageNamespace: apps
+      targetNamespace: apps
+      upgrade:
+        remediation:
+          retries: 10
+          strategy: rollback
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rsip
+  labels:
+    crossplane.io/composite: podinfo
+  name: podinfo
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: podinfo
+    uid: 02ccd374-3fc0-5e17-959e-ac0bbb50737f
+spec:
+  filter:
+    semver: 6.7.1
+  type: OCIArtifactTag
+  url: oci://ghcr.io/stefanprodan/charts/podinfo

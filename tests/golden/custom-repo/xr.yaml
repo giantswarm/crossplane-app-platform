@@ -1,0 +1,8 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: podinfo, namespace: org-acme}
+spec:
+  chart: {name: podinfo, repository: "oci://ghcr.io/stefanprodan/charts", version: 6.7.1}
+  targets:
+    static: [{cluster: acme02}]
+  namespace: apps
