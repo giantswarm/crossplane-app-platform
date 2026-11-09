@@ -1,0 +1,20 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: ingress-nginx, namespace: org-acme}
+spec:
+  chart: {name: ingress-nginx, version: ">=3.0.0 <4.0.0"}
+  namespace: kube-system
+  values:
+    replicas: 2
+    controller: {image: {tag: v1}, resources: {limits: {cpu: 1}}, extraArgs: [a, b]}
+    drop: me
+  valuesFrom:
+    - {kind: ConfigMap, name: global-values}
+  targets:
+    static:
+      - cluster: acme01
+        valuesFrom:
+          - {kind: Secret, name: target-secret, valuesKey: secret.yaml}
+        values:
+          drop: null
+          controller: {image: {tag: v2}, extraArgs: [c]}

@@ -18,4 +18,5 @@ spec:
         kind: KCLInput
         spec:
           source: |
+{{ .Files.Get "files/merge/merge.k" | indent 12 }}
 {{ .Files.Get "files/helmapp.k" | indent 12 }}

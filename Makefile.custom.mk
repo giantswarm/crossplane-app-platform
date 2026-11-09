@@ -5,3 +5,7 @@ validate-spike-case-b: ## Offline check of the Case B spike manifests (needs env
 .PHONY: test-golden
 test-golden: ## Golden render tests (needs bin/crossplane v2 CLI, helm, Docker for function-kcl).
 	./tests/golden/run.sh
+
+.PHONY: test-kcl
+test-kcl: ## KCL unit tests of the values merge function (needs kcl).
+	kcl test ./helm/crossplane-app-platform/files/merge
