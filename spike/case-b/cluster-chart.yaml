@@ -1,0 +1,66 @@
+# Case B spike, variant 2: test cluster chart (CAPI Cluster Ready, poller wait). Render with envsubst, see RUNBOOK.md.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: ${NEW_HR_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  type: OCIArtifactTag
+  url: ${CHART_URL}
+  filter:
+    semver: "${CHART_VERSION}"
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: ${NEW_HR_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      name: ${NEW_HR_NAME}
+  dependsOn:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: ${NEW_HR_NAME}
+      ready: true
+      readyExpr: "has(status.exportedInputs) && size(status.exportedInputs) > 0"
+  resources:
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: OCIRepository
+      metadata:
+        name: ${NEW_HR_NAME}
+        namespace: ${NAMESPACE}
+      spec:
+        url: ${CHART_URL}
+        ref:
+          tag: << inputs.tag | quote >>
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      metadata:
+        name: ${NEW_HR_NAME}
+        namespace: ${NAMESPACE}
+        annotations:
+          fluxcd.controlplane.io/prune: disabled
+      spec:
+        releaseName: ${RELEASE_NAME}
+        chartRef:
+          kind: OCIRepository
+          name: ${NEW_HR_NAME}
+        install:
+          remediation:
+            retries: 10
+        upgrade:
+          remediation:
+            retries: 10
+            strategy: rollback
+        interval: 5m
+        driftDetection:
+          mode: warn
+        # Wait must stay enabled (install/upgrade.disableWait unset): CEL runs only with wait + poller.
+        waitStrategy:
+          name: poller
+        healthCheckExprs:
+          - apiVersion: cluster.x-k8s.io/v1beta1
+            kind: Cluster
+            current: "status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')"
