@@ -28,6 +28,13 @@ status:
     reason: Creating
     status: "False"
     type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: acme01
+    message: ""
+    ready: false
+    version: ""
+  version: ""
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
@@ -46,6 +53,12 @@ metadata:
     name: ingress-nginx
     uid: 848c3fa4-eb9c-5784-833d-0b3143ee9184
 spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: ingress-nginx
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
   inputsFrom:
   - kind: ResourceSetInputProvider
     name: ingress-nginx
