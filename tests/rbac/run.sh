@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 CHART=../../helm/crossplane-app-platform
-out=$(helm template x "$CHART" -s templates/clusterrole-customer.yaml)
+out=$(helm template x "$CHART" --set managementCluster=mc01 -s templates/clusterrole-customer.yaml)
 fail() { echo "FAIL $*"; exit 1; }
 check() { [ "$(echo "$out" | yq ea "$1")" = "$2" ] || fail "$1 != $2"; }
 
@@ -18,7 +18,7 @@ done
 check 'select(.metadata.name=="crossplane-app-platform-helmapp-view") | .rules[0].verbs | join(",")' get,list,watch
 check 'select(.metadata.name=="crossplane-app-platform-helmapp-edit") | .rules[0].verbs | join(",")' '*'
 # nothing cluster-wide beyond ClusterRoles, no Secret/ConfigMap access, no PolicyException
-all=$(helm template x "$CHART")
+all=$(helm template x "$CHART" --set managementCluster=mc01)
 echo "$all" | yq ea 'select(.kind=="ClusterRoleBinding" or .kind=="PolicyException")' | grep -q . && fail "unexpected binding or PolicyException"
 echo "$out" | grep -q -E "secrets|configmaps" && fail "secret access in customer roles"
 echo "PASS rbac"
