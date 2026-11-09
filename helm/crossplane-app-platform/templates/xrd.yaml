@@ -34,6 +34,25 @@ spec:
                     name: {type: string, minLength: 1}
                     repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
                     version: {type: string, minLength: 1, description: Exact version or semver range}
+                    verify:
+                      type: object
+                      description: "Cosign verification of the chart. Default: GS CircleCI keyless identity for the GS registry, none elsewhere. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key)."
+                      required: [provider]
+                      properties:
+                        provider: {type: string, enum: [cosign]}
+                        secretRef:
+                          type: object
+                          required: [name]
+                          properties:
+                            name: {type: string, minLength: 1}
+                        matchOIDCIdentity:
+                          type: array
+                          items:
+                            type: object
+                            required: [issuer, subject]
+                            properties:
+                              issuer: {type: string}
+                              subject: {type: string}
                 targets:
                   type: object
                   required: [static]
@@ -41,16 +60,27 @@ spec:
                     static:
                       type: array
                       minItems: 1
-                      maxItems: 1 # slice 3 lifts this (multi-target)
                       items:
                         type: object
-                        required: [cluster]
+                        x-kubernetes-validations:
+                          - rule: "has(self.cluster) != has(self.inCluster)"
+                            message: set exactly one of cluster and inCluster
                         properties:
-                          cluster: {type: string, minLength: 1}
+                          cluster: {type: string, minLength: 1, description: Remote target, uses <cluster>-kubeconfig}
+                          inCluster: {type: boolean, enum: [true], description: The management cluster itself, no kubeconfig}
                           values: {type: object, x-kubernetes-preserve-unknown-fields: true, description: Deep-merged over spec.values, null removes a key}
                           valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
                 values: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
+                dependsOn:
+                  type: object
+                  properties:
+                    static: {type: array, items: {type: string, minLength: 1}, description: HelmRelease names copied into every HelmRelease}
+                    templated: {type: array, items: {type: string, minLength: 1}, description: "Names with %cluster% replaced per target"}
+                helmReleaseOverrides:
+                  type: object
+                  properties:
+                    releaseName: {type: string, minLength: 1}
                 namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
             status:
               type: object

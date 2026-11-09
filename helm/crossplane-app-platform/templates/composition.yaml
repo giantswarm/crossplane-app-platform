@@ -18,5 +18,6 @@ spec:
         kind: KCLInput
         spec:
           source: |
+            MC = "{{ required "managementCluster is required (name of the management cluster, used for in-cluster targets)" .Values.managementCluster }}"
 {{ .Files.Get "files/merge/merge.k" | indent 12 }}
 {{ .Files.Get "files/helmapp.k" | indent 12 }}

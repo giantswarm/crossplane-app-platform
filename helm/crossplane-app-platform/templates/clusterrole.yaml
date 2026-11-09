@@ -9,3 +9,7 @@ rules:
   - apiGroups: [fluxcd.controlplane.io]
     resources: [resourcesetinputproviders, resourcesets]
     verbs: ["*"]
+  # Read-only: the HelmApp status reads the per-target HelmReleases.
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]

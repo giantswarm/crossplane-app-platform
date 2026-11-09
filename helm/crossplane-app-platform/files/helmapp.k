@@ -5,6 +5,17 @@ name = oxr.metadata.name
 ns = oxr.metadata.namespace
 repo = spec.chart?.repository or "oci://gsoci.azurecr.io/charts/giantswarm"
 chart_url = "${repo}/${spec.chart.name}"
+GS_REPO = "oci://gsoci.azurecr.io/charts/giantswarm"
+# Regexes as architect-orb verifies its own signatures: https://github.com/giantswarm/architect-orb/blob/main/docs/cosign-signing.md
+# shortcut: matches any CircleCI project/pipeline, not only Giant Swarm's; pin the org id in the issuer once known.
+_gs_verify = {
+    provider = "cosign"
+    matchOIDCIdentity = [{
+        issuer = "^https://oidc\\.circleci\\.com"
+        subject = "^https://circleci\\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$"
+    }]
+}
+_verify = spec.chart?.verify or (_gs_verify if repo == GS_REPO else Undefined)
 # RSIP OCIArtifactTag exports the input keys id, tag, digest; flux-operator renders << >> templates.
 TAG = "<< inputs.tag | quote >>"
 FLUX_CP = "fluxcd.controlplane.io/v1"
@@ -22,17 +33,22 @@ _values_from = lambda t -> [{str:}] {
 _helmrelease = lambda t -> {str:} {
     _vf = _values_from(t)
     _values = merge_values(spec.values or {}, t.values or {})
+    _cluster = MC if t.inCluster else t.cluster
+    _deps = [{name = n} for n in spec.dependsOn?.static or []] + [{name = n.replace("%cluster%", _cluster)} for n in spec.dependsOn?.templated or []]
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
-        metadata = {name = "${t.cluster}-${name}", namespace = ns}
+        metadata = {name = "${_cluster}-${name}", namespace = ns}
         spec = {
             interval = "5m"
-            releaseName = name
+            releaseName = spec.helmReleaseOverrides?.releaseName or name
             chartRef = {kind = "OCIRepository", name = name}
-            kubeConfig = {secretRef = {name = "${t.cluster}-kubeconfig"}}
-            targetNamespace = spec.namespace
-            storageNamespace = spec.namespace
+            if not t.inCluster:
+                kubeConfig = {secretRef = {name = "${_cluster}-kubeconfig"}}
+                targetNamespace = spec.namespace
+                storageNamespace = spec.namespace
+            if _deps:
+                dependsOn = _deps
             install = {remediation = {retries = 10}}
             upgrade = {remediation = {retries = 10, strategy = "rollback"}}
             driftDetection = {mode = "warn"}
@@ -61,13 +77,60 @@ _rset = {
     metadata = {name = name, namespace = ns, annotations = _annot("rset")}
     spec = {
         inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
+        # Empty-input guard: exportedInputs is omitempty, so "empty" means absent. Without it the RSet prunes every HelmRelease.
+        dependsOn = [{
+            apiVersion = FLUX_CP
+            kind = "ResourceSetInputProvider"
+            name = name
+            ready = True
+            readyExpr = "has(status.exportedInputs) && size(status.exportedInputs) > 0"
+        }]
         resources = [{
             apiVersion = "source.toolkit.fluxcd.io/v1"
             kind = "OCIRepository"
             metadata = {name = name, namespace = ns}
-            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}}
+            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {})}
         }] + [_helmrelease(t) for t in spec.targets.static]
     }
 }
 
-items = [_rsip, _rset]
+# Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
+_hr_key = lambda t -> str { "hr-${t.cluster}" }
+_hr_req = {
+    apiVersion = "meta.krm.kcl.dev/v1alpha1"
+    kind = "ExtraResources"
+    requirements = {
+        _hr_key(t) = {
+            apiVersion = "helm.toolkit.fluxcd.io/v2"
+            kind = "HelmRelease"
+            matchName = "${t.cluster}-${name}"
+            matchNamespace = ns
+        } for t in spec.targets.static
+    }
+}
+
+_ocds = option("params").ocds
+_er = option("params")?.extraResources or {}
+_exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
+_hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
+_ready_cond = lambda h -> [{str:}] { [c for c in (h.status?.conditions or []) if c.type == "Ready"] }
+_target = lambda t -> {str:} {
+    {
+        cluster = t.cluster
+        version = ((_hr(t).status?.history or [{}])[0]?.chartVersion) or ""
+        ready = len([c for c in _ready_cond(_hr(t)) if c.status == "True"]) > 0
+        message = (_ready_cond(_hr(t)) or [{}])[0]?.message or ""
+    }
+}
+_targets = [_target(t) for t in spec.targets.static]
+
+_status = {
+    # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
+    version = (_exported or [{}])[0]?.tag or ([t.version for t in _targets if t.version] or [""])[0]
+    message = "Waiting for the input provider." if not _ocds?.rsip else "" if _exported else "No chart version exported for \"${spec.chart.version}\" (no matching tag, or waiting for the schedule). Existing HelmReleases are kept."
+    targets = _targets
+}
+
+_dxr = {**option("params").dxr, status = _status}
+
+items = [_rsip, _rset, _hr_req, _dxr]

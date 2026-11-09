@@ -28,6 +28,13 @@ status:
     reason: Creating
     status: "False"
     type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: acme02
+    message: ""
+    ready: false
+    version: ""
+  version: ""
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
@@ -46,6 +53,12 @@ metadata:
     name: podinfo
     uid: 02ccd374-3fc0-5e17-959e-ac0bbb50737f
 spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: podinfo
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
   inputsFrom:
   - kind: ResourceSetInputProvider
     name: podinfo

@@ -28,6 +28,13 @@ status:
     reason: Creating
     status: "False"
     type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: mc01
+    message: ""
+    ready: false
+    version: ""
+  version: ""
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
@@ -46,6 +53,12 @@ metadata:
     name: ingress-nginx
     uid: 848c3fa4-eb9c-5784-833d-0b3143ee9184
 spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: ingress-nginx
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
   inputsFrom:
   - kind: ResourceSetInputProvider
     name: ingress-nginx
@@ -60,6 +73,11 @@ spec:
       ref:
         tag: << inputs.tag | quote >>
       url: oci://gsoci.azurecr.io/charts/giantswarm/ingress-nginx
+      verify:
+        matchOIDCIdentity:
+        - issuer: ^https://oidc\.circleci\.com
+          subject: ^https://circleci\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$
+        provider: cosign
   - apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
@@ -75,12 +93,7 @@ spec:
         remediation:
           retries: 10
       interval: 5m
-      kubeConfig:
-        secretRef:
-          name: mc01-kubeconfig
       releaseName: ingress-nginx
-      storageNamespace: kube-system
-      targetNamespace: kube-system
       upgrade:
         remediation:
           retries: 10

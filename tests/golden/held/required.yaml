@@ -1,0 +1,7 @@
+# The HelmRelease from the last applied version stays in place during the hold.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: acme01-ingress-nginx, namespace: org-acme}
+status:
+  history: [{chartVersion: 3.8.0}]
+  conditions: [{type: Ready, status: "True", reason: UpgradeSucceeded, message: Helm upgrade succeeded}]
