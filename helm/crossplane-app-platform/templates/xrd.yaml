@@ -41,12 +41,23 @@ spec:
                     static:
                       type: array
                       minItems: 1
-                      maxItems: 1 # slice 3 lifts this (multi-target)
                       items:
                         type: object
-                        required: [cluster]
+                        x-kubernetes-validations:
+                          - rule: "has(self.cluster) != has(self.inCluster)"
+                            message: set exactly one of cluster and inCluster
                         properties:
-                          cluster: {type: string, minLength: 1}
+                          cluster: {type: string, minLength: 1, description: Remote target, uses <cluster>-kubeconfig}
+                          inCluster: {type: boolean, enum: [true], description: The management cluster itself, no kubeconfig}
+                dependsOn:
+                  type: object
+                  properties:
+                    static: {type: array, items: {type: string, minLength: 1}, description: HelmRelease names copied into every HelmRelease}
+                    templated: {type: array, items: {type: string, minLength: 1}, description: "Names with %cluster% replaced per target"}
+                helmReleaseOverrides:
+                  type: object
+                  properties:
+                    releaseName: {type: string, minLength: 1}
                 namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
             status:
               type: object

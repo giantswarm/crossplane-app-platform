@@ -12,17 +12,22 @@ FLUX_CP = "fluxcd.controlplane.io/v1"
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
 
 _helmrelease = lambda t -> {str:} {
+    _cluster = MC if t.inCluster else t.cluster
+    _deps = [{name = n} for n in spec.dependsOn?.static or []] + [{name = n.replace("%cluster%", _cluster)} for n in spec.dependsOn?.templated or []]
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
-        metadata = {name = "${t.cluster}-${name}", namespace = ns}
+        metadata = {name = "${_cluster}-${name}", namespace = ns}
         spec = {
             interval = "5m"
-            releaseName = name
+            releaseName = spec.helmReleaseOverrides?.releaseName or name
             chartRef = {kind = "OCIRepository", name = name}
-            kubeConfig = {secretRef = {name = "${t.cluster}-kubeconfig"}}
-            targetNamespace = spec.namespace
-            storageNamespace = spec.namespace
+            if not t.inCluster:
+                kubeConfig = {secretRef = {name = "${_cluster}-kubeconfig"}}
+                targetNamespace = spec.namespace
+                storageNamespace = spec.namespace
+            if _deps:
+                dependsOn = _deps
             install = {remediation = {retries = 10}}
             upgrade = {remediation = {retries = 10, strategy = "rollback"}}
             driftDetection = {mode = "warn"}
