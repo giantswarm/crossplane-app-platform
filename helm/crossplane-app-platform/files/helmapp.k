@@ -47,6 +47,14 @@ _rset = {
     metadata = {name = name, namespace = ns, annotations = _annot("rset")}
     spec = {
         inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
+        # Empty-input guard: exportedInputs is omitempty, so "empty" means absent. Without it the RSet prunes every HelmRelease.
+        dependsOn = [{
+            apiVersion = FLUX_CP
+            kind = "ResourceSetInputProvider"
+            name = name
+            ready = True
+            readyExpr = "has(status.exportedInputs) && size(status.exportedInputs) > 0"
+        }]
         resources = [{
             apiVersion = "source.toolkit.fluxcd.io/v1"
             kind = "OCIRepository"
@@ -56,4 +64,43 @@ _rset = {
     }
 }
 
-items = [_rsip, _rset]
+# Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
+_hr_key = lambda t -> str { "hr-${t.cluster}" }
+_hr_req = {
+    apiVersion = "meta.krm.kcl.dev/v1alpha1"
+    kind = "ExtraResources"
+    requirements = {
+        _hr_key(t) = {
+            apiVersion = "helm.toolkit.fluxcd.io/v2"
+            kind = "HelmRelease"
+            matchName = "${t.cluster}-${name}"
+            matchNamespace = ns
+        } for t in spec.targets.static
+    }
+}
+
+_ocds = option("params").ocds
+_er = option("params")?.extraResources or {}
+_exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
+_hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
+_ready_cond = lambda h -> [{str:}] { [c for c in (h.status?.conditions or []) if c.type == "Ready"] }
+_target = lambda t -> {str:} {
+    {
+        cluster = t.cluster
+        version = ((_hr(t).status?.history or [{}])[0]?.chartVersion) or ""
+        ready = len([c for c in _ready_cond(_hr(t)) if c.status == "True"]) > 0
+        message = (_ready_cond(_hr(t)) or [{}])[0]?.message or ""
+    }
+}
+_targets = [_target(t) for t in spec.targets.static]
+
+_status = {
+    # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
+    version = (_exported or [{}])[0]?.tag or ([t.version for t in _targets if t.version] or [""])[0]
+    message = "Waiting for the input provider." if not _ocds?.rsip else "" if _exported else "No chart version exported for \"${spec.chart.version}\" (no matching tag, or waiting for the schedule). Existing HelmReleases are kept."
+    targets = _targets
+}
+
+_dxr = {**option("params").dxr, status = _status}
+
+items = [_rsip, _rset, _hr_req, _dxr]
