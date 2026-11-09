@@ -1,0 +1,146 @@
+---
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: release-aws
+  namespace: org-acme
+spec:
+  crossplane:
+    resourceRefs:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: release-aws
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSet
+      name: release-aws
+status:
+  conditions:
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: WatchCircuitClosed
+    status: "True"
+    type: Responsive
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: ReconcileSuccess
+    status: "True"
+    type: Synced
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    message: 'Unready resources: rset, rsip'
+    reason: Creating
+    status: "False"
+    type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: acme01
+    message: ""
+    ready: false
+    version: ""
+  version: ""
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rset
+  labels:
+    crossplane.io/composite: release-aws
+  name: release-aws
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: release-aws
+    uid: 1c4ea1f3-240d-54c3-8e06-892139444f55
+spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: release-aws
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
+  inputsFrom:
+  - kind: ResourceSetInputProvider
+    name: release-aws
+  resources:
+  - apiVersion: source.toolkit.fluxcd.io/v1
+    kind: OCIRepository
+    metadata:
+      name: release-aws
+      namespace: org-acme
+    spec:
+      interval: 5m
+      ref:
+        tag: << inputs.tag | quote >>
+      url: oci://gsoci.azurecr.io/charts/giantswarm/release-aws
+      verify:
+        matchOIDCIdentity:
+        - issuer: ^https://oidc\.circleci\.com
+          subject: ^https://circleci\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$
+        provider: cosign
+  - apiVersion: helm.toolkit.fluxcd.io/v2
+    kind: HelmRelease
+    metadata:
+      annotations:
+        fluxcd.controlplane.io/prune: disabled
+      name: acme01-release-aws
+      namespace: org-acme
+    spec:
+      chartRef:
+        kind: OCIRepository
+        name: release-aws
+      driftDetection:
+        mode: warn
+      healthCheckExprs:
+      - apiVersion: cluster.x-k8s.io/v1beta1
+        current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status ==
+          'True')
+        kind: Cluster
+      install:
+        remediation:
+          retries: 10
+      interval: 5m
+      kubeConfig:
+        secretRef:
+          name: acme01-kubeconfig
+      releaseName: release-aws
+      storageNamespace: org-acme
+      targetNamespace: org-acme
+      upgrade:
+        remediation:
+          retries: 10
+          strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme01-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme01-release-aws-user-values
+        optional: true
+      - kind: Secret
+        name: acme01-release-aws-user-values
+        optional: true
+      waitStrategy:
+        name: poller
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rsip
+  labels:
+    crossplane.io/composite: release-aws
+  name: release-aws
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: release-aws
+    uid: 1c4ea1f3-240d-54c3-8e06-892139444f55
+spec:
+  filter:
+    semver: '>=3.0.0 <4.0.0'
+  type: OCIArtifactTag
+  url: oci://gsoci.azurecr.io/charts/giantswarm/release-aws

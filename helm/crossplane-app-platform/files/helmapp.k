@@ -20,6 +20,19 @@ _verify = spec.chart?.verify or (_gs_verify if repo == GS_REPO else Undefined)
 TAG = "<< inputs.tag | quote >>"
 FLUX_CP = "fluxcd.controlplane.io/v1"
 
+# Protection: cluster-* and release-* charts are protected unless spec.protect says otherwise.
+_is_cluster_chart = spec.chart.name.startswith("cluster-") or spec.chart.name.startswith("release-")
+_protect = spec.protect if spec.protect != Undefined else _is_cluster_chart
+# shortcut: release-* gets the CAPI Cluster check too, as the ticket says; whether it fits every release-* chart is open (docs/protection.md).
+_default_checks = [{
+    apiVersion = "cluster.x-k8s.io/v1beta1"
+    kind = "Cluster"
+    current = "status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')"
+}] if _protect and _is_cluster_chart else []
+# A user entry for the same apiVersion and kind replaces the default, any other entry is added.
+_user_checks = spec.healthCheckExprs or []
+_checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVersion == d.apiVersion and u.kind == d.kind]] + _user_checks
+
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
 
 # valuesFrom layers, lowest to highest: derived cluster values, global, per target, derived user values; spec.values is applied last by Flux.
@@ -38,7 +51,7 @@ _helmrelease = lambda t -> {str:} {
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
-        metadata = {name = "${_cluster}-${name}", namespace = ns}
+        metadata = {name = "${_cluster}-${name}", namespace = ns, **({annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {})}
         spec = {
             interval = "5m"
             releaseName = spec.helmReleaseOverrides?.releaseName or name
@@ -52,6 +65,10 @@ _helmrelease = lambda t -> {str:} {
             install = {remediation = {retries = 10}}
             upgrade = {remediation = {retries = 10, strategy = "rollback"}}
             driftDetection = {mode = "warn"}
+            # CEL checks run only with wait enabled (disableWait unset) and the poller strategy.
+            if _checks:
+                waitStrategy = {name = "poller"}
+                healthCheckExprs = _checks
             if _vf:
                 valuesFrom = _vf
             if _values:

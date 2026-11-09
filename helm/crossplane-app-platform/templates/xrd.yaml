@@ -99,6 +99,19 @@ spec:
                           timeZone: {type: string}
                           window: {type: string, pattern: '^([0-9]+(\.[0-9]+)?(ms|s|m|h))+$', description: "Go duration, for example 4h"}
                     forceInstallOutsideWindow: {type: boolean, description: Install the first version at once, outside a window}
+                protect: {type: boolean, description: "Render fluxcd.controlplane.io/prune disabled on the HelmReleases. Default true for cluster-* and release-* charts, false otherwise."}
+                healthCheckExprs:
+                  type: array
+                  description: "CEL health checks passed to every HelmRelease (needs helm-controller v1.5.0 or later). Adds to the default for protected cluster-* charts; an entry with the same apiVersion and kind replaces it."
+                  items:
+                    type: object
+                    required: [apiVersion, kind, current]
+                    properties:
+                      apiVersion: {type: string, minLength: 1}
+                      kind: {type: string, minLength: 1}
+                      current: {type: string, minLength: 1}
+                      inProgress: {type: string}
+                      failed: {type: string}
                 namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
             status:
               type: object
