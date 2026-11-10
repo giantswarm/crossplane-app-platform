@@ -56,6 +56,9 @@ _values_from = lambda t -> [{str:}] {
     _cluster + (spec.valuesFrom or []) + (t.valuesFrom or []) + _user
 }
 
+# Same value as the original HelmRelease, or none. GS Kyverno (flux-multi-tenancy) needs it outside the GS namespaces.
+_sa = spec.helmReleaseOverrides?.serviceAccountName or ""
+
 _helmrelease = lambda t -> {str:} {
     _vf = _values_from(t)
     _values = merge_values(spec.values or {}, t.values or {})
@@ -69,6 +72,8 @@ _helmrelease = lambda t -> {str:} {
             interval = "5m"
             releaseName = spec.helmReleaseOverrides?.releaseName or name
             chartRef = {kind = "OCIRepository", name = name}
+            if _sa:
+                serviceAccountName = _sa
             if not t.inCluster:
                 kubeConfig = {secretRef = {name = "${_cluster}-kubeconfig"}}
                 targetNamespace = spec.namespace
@@ -113,6 +118,8 @@ _rset = {
     metadata = {name = name, namespace = ns, annotations = _annot("rset")}
     spec = {
         inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
+        if _sa:
+            serviceAccountName = _sa
         # Empty-input guard: exportedInputs is omitempty, so "empty" means absent. Without it the RSet prunes every HelmRelease.
         dependsOn = [{
             apiVersion = FLUX_CP

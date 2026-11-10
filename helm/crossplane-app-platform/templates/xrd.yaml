@@ -81,6 +81,7 @@ spec:
                   type: object
                   properties:
                     releaseName: {type: string, minLength: 1}
+                    serviceAccountName: {type: string, minLength: 1, description: "Copied from the original HelmRelease. Set on every HelmRelease and on the ResourceSet; unset means none."}
                 schedule:
                   type: object
                   description: Upgrade windows. New chart versions are exported only inside a window.
