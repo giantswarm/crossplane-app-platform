@@ -11,7 +11,7 @@ test-rbac: ## helm template assertions for the customer RBAC (needs helm, yq).
 	./tests/rbac/run.sh
 
 .PHONY: test-cel
-test-cel: ## XRD schema and CEL rules, offline, with valid and rejected HelmApps (needs bin/crossplane v2 CLI, helm).
+test-cel: ## XRD schema and CEL rules, offline, with valid and rejected HelmApps (needs bin/crossplane v2 CLI, helm, go).
 	./tests/cel/run.sh
 
 .PHONY: test-kcl

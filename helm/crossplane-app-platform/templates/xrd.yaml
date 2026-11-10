@@ -81,7 +81,7 @@ spec:
                           - rule: "has(self.cluster) != has(self.inCluster)"
                             message: set exactly one of cluster and inCluster
                         properties:
-                          cluster: {type: string, minLength: 1, description: Remote target, uses <cluster>-kubeconfig}
+                          cluster: {type: string, minLength: 1, maxLength: 63, description: Remote target, uses <cluster>-kubeconfig}
                           inCluster: {type: boolean, enum: [true], description: The management cluster itself, no kubeconfig}
                           values: {type: object, x-kubernetes-preserve-unknown-fields: true, description: Deep-merged over spec.values, null removes a key}
                           valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}

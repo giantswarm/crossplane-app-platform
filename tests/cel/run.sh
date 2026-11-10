@@ -12,4 +12,6 @@ done
 for f in fail/*.yaml; do
   if "$XP" resource validate "$tmp/xrd.yaml" "$f" >/dev/null 2>&1; then echo "FAIL $f (accepted)"; rc=1; else echo "PASS $f"; fi
 done
+# The API server cost estimator, which `resource validate` does not run.
+(cd cost && go run . "$tmp/xrd.yaml") || rc=1
 exit $rc
