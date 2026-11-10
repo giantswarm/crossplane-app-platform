@@ -7,11 +7,12 @@ repo = spec.chart?.repository or "oci://gsoci.azurecr.io/charts/giantswarm"
 chart_url = "${repo}/${spec.chart.name}"
 GS_REPO = "oci://gsoci.azurecr.io/charts/giantswarm"
 # Regexes as architect-orb verifies its own signatures: https://github.com/giantswarm/architect-orb/blob/main/docs/cosign-signing.md
-# shortcut: matches any CircleCI project/pipeline, not only Giant Swarm's; pin the org id in the issuer once known.
+# shortcut: matches any CircleCI project. The Fulcio cert carries the org id only in an extension that Flux cannot match
+# (issuer is plain https://oidc.circleci.com, subject has the project id); upgrade if Flux gets extension matching.
 _gs_verify = {
     provider = "cosign"
     matchOIDCIdentity = [{
-        issuer = "^https://oidc\\.circleci\\.com"
+        issuer = "^https://oidc\\.circleci\\.com$"
         subject = "^https://circleci\\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$"
     }]
 }
@@ -29,6 +30,8 @@ _default_checks = [{
     kind = "Cluster"
     current = "status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')"
 }] if _protect and _is_cluster_chart else []
+# The OCIRepository gets the guard too, so an orphaned HelmRelease keeps its source.
+_prune_guard = {annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {}
 # A user entry for the same apiVersion and kind replaces the default, any other entry is added.
 _user_checks = spec.healthCheckExprs or []
 _checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVersion == d.apiVersion and u.kind == d.kind]] + _user_checks
@@ -51,7 +54,7 @@ _helmrelease = lambda t -> {str:} {
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
-        metadata = {name = "${_cluster}-${name}", namespace = ns, **({annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {})}
+        metadata = {name = "${_cluster}-${name}", namespace = ns, **_prune_guard}
         spec = {
             interval = "5m"
             releaseName = spec.helmReleaseOverrides?.releaseName or name
@@ -111,7 +114,7 @@ _rset = {
         resources = [{
             apiVersion = "source.toolkit.fluxcd.io/v1"
             kind = "OCIRepository"
-            metadata = {name = name, namespace = ns}
+            metadata = {name = name, namespace = ns, **_prune_guard}
             spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {})}
         }] + [_helmrelease(t) for t in spec.targets.static]
     }

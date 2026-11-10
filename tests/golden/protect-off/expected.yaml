@@ -74,7 +74,7 @@ spec:
       url: oci://gsoci.azurecr.io/charts/giantswarm/cluster-aws
       verify:
         matchOIDCIdentity:
-        - issuer: ^https://oidc\.circleci\.com
+        - issuer: ^https://oidc\.circleci\.com$
           subject: ^https://circleci\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$
         provider: cosign
   - apiVersion: helm.toolkit.fluxcd.io/v2
