@@ -1,0 +1,50 @@
+# Repo-owned CI, merged into the generated workflows.yml by .circleci/config.yml.
+# Runs the offline HelmApp test suites (golden render, XRD CEL, RBAC, KCL). The golden render starts
+# function-kcl in a local Docker container, so the job uses a machine executor.
+version: 2.1
+
+jobs:
+  helmapp-tests:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+    environment:
+      HELM_VERSION: v3.22.1
+      YQ_VERSION: v4.54.2
+      CROSSPLANE_VERSION: v2.5.0
+      KCL_VERSION: v0.13.3
+    steps:
+    - checkout
+    - run:
+        name: Install helm, yq, crossplane CLI and kcl
+        command: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin" bin
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar xz -C /tmp
+          mv /tmp/linux-amd64/helm "$HOME/bin/helm"
+          curl -fsSL -o "$HOME/bin/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          curl -fsSL "https://github.com/kcl-lang/cli/releases/download/${KCL_VERSION}/kcl-${KCL_VERSION}-linux-amd64.tar.gz" | tar xz -C "$HOME/bin" kcl
+          curl -fsSL -o bin/crossplane "https://cli.crossplane.io/stable/${CROSSPLANE_VERSION}/bin/linux_amd64/crossplane"
+          chmod +x "$HOME/bin/"* bin/crossplane
+          echo 'export PATH="$HOME/bin:$PATH"' >> "$BASH_ENV"
+    - run:
+        name: KCL unit tests
+        command: make test-kcl
+    - run:
+        name: RBAC tests
+        command: make test-rbac
+    - run:
+        name: XRD CEL tests
+        command: make test-cel
+    - run:
+        name: Golden render tests
+        command: make test-golden
+
+workflows:
+  build:
+    jobs:
+    - helmapp-tests:
+        filters:
+          branches:
+            ignore:
+            - main

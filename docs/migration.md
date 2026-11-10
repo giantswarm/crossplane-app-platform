@@ -122,7 +122,8 @@ Case A or Case B, with these settings:
 - `spec.chart.name` is the chart name, `spec.chart.version` is the deployed version.
 - `spec.valuesFrom` is the old list, copied unchanged. `spec.values` is empty unless the old HelmRelease has values.
 - Protection is on by default. Keep it on.
-- The default CAPI `Cluster` health check needs helm-controller v1.5.0 or later.
+- The default CAPI `Cluster` health check needs helm-controller v1.5.0 or later and the chart value
+  `helmController.healthChecks: true`. With the default (`false`) the HelmApp renders no health check.
 
 Before the move, also back up the CAPI objects of the cluster (READ), and after the move check their UIDs and
 `metadata.generation` did not change and no Machine was replaced.

@@ -29,10 +29,12 @@ _default_checks = [{
     apiVersion = "cluster.x-k8s.io/v1beta1"
     kind = "Cluster"
     current = "status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')"
-}] if _protect and _is_cluster_chart else []
+}] if HEALTH_CHECKS and _protect and _is_cluster_chart else []
 # The OCIRepository gets the guard too, so an orphaned HelmRelease keeps its source.
 _prune_guard = {annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {}
 # A user entry for the same apiVersion and kind replaces the default, any other entry is added.
+# HEALTH_CHECKS comes from the chart value helmController.healthChecks, set in the Composition template.
+assert HEALTH_CHECKS or not spec.healthCheckExprs, "spec.healthCheckExprs needs helm-controller >= v1.5.0 (chart value helmController.healthChecks)"
 _user_checks = spec.healthCheckExprs or []
 _checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVersion == d.apiVersion and u.kind == d.kind]] + _user_checks
 

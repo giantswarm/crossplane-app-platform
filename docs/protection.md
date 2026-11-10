@@ -5,7 +5,7 @@
 - Protected: every HelmRelease and the OCIRepository get `fluxcd.controlplane.io/prune: disabled`. Flux Operator's ResourceSet skips resources with it when pruning and when the ResourceSet is deleted (`fluxcd.controlplane.io/prune` at fo059 `api/v1/common_types.go:32`, exclusions at `internal/controller/resourceset_controller.go:969-971` on delete and `:669` on stale GC). The HelmRelease, its OCIRepository and the Helm release stay as orphans.
 - Protected `cluster-*` / `release-*` charts also get a default `healthCheckExprs` entry (CAPI `cluster.x-k8s.io/v1beta1` `Cluster`, Ready condition true) and `waitStrategy: poller`. CEL runs only with wait enabled and the poller strategy (helm-controller `api/v2/helmrelease_types.go:203-209`).
 - `spec.healthCheckExprs` is passed to every HelmRelease on every chart. Entries add to the default; an entry with the same `apiVersion` and `kind` as the default replaces it. Setting any entry enables `waitStrategy: poller`.
-- Prerequisite: helm-controller >= v1.5.0 (`healthCheckExprs`, `waitStrategy`).
+- Prerequisite: helm-controller >= v1.5.0 (`healthCheckExprs`, `waitStrategy`). The chart value `helmController.healthChecks` (default `false`) turns all of this on. With it off, no HelmRelease gets `healthCheckExprs` or `waitStrategy`, the prune guard stays, and a HelmApp with `spec.healthCheckExprs` is refused.
 
 ## Why the OCIRepository is guarded too
 

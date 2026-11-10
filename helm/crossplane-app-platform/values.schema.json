@@ -58,6 +58,16 @@
             "type": "object",
             "additionalProperties": true
         },
+        "helmController": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "healthChecks": {
+                    "type": "boolean",
+                    "description": "Render healthCheckExprs and waitStrategy on HelmReleases. Needs helm-controller >= v1.5.0."
+                }
+            }
+        },
         "image": {
             "type": "object",
             "additionalProperties": false,
