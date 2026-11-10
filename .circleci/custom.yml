@@ -1,5 +1,5 @@
 # Repo-owned CI, merged into the generated workflows.yml by .circleci/config.yml.
-# Runs the offline HelmApp test suites (golden render, XRD CEL, RBAC, KCL). The golden render starts
+# Runs the offline HelmApp test suites (golden render, XRD CEL, RBAC, KCL, helmapp-wrap). The golden render starts
 # function-kcl in a local Docker container, so the job uses a machine executor.
 version: 2.1
 
@@ -13,6 +13,7 @@ jobs:
       YQ_VERSION: v4.54.2
       CROSSPLANE_VERSION: v2.5.0
       KCL_VERSION: v0.13.3
+      UV_VERSION: 0.9.5
     steps:
     - checkout
     - run:
@@ -25,6 +26,7 @@ jobs:
           curl -fsSL -o "$HOME/bin/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           curl -fsSL "https://github.com/kcl-lang/cli/releases/download/${KCL_VERSION}/kcl-${KCL_VERSION}-linux-amd64.tar.gz" | tar xz -C "$HOME/bin" kcl
           curl -fsSL -o bin/crossplane "https://cli.crossplane.io/stable/${CROSSPLANE_VERSION}/bin/linux_amd64/crossplane"
+          curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C "$HOME/bin" --strip-components 1
           chmod +x "$HOME/bin/"* bin/crossplane
           echo 'export PATH="$HOME/bin:$PATH"' >> "$BASH_ENV"
     - run:
@@ -36,6 +38,9 @@ jobs:
     - run:
         name: XRD CEL tests
         command: make test-cel
+    - run:
+        name: helmapp-wrap unit tests
+        command: make test-wrap
     - run:
         name: Golden render tests
         command: make test-golden

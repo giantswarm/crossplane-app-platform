@@ -3,6 +3,9 @@
 This procedure moves one existing Flux `HelmRelease` under a `HelmApp` without a Helm uninstall.
 The Helm release (its storage secrets and its workload) stays in place; only the object that delivers it changes.
 
+[tools/helmapp-wrap](../tools/helmapp-wrap/README.md) automates the mapping, the stop conditions and the
+Case B delete; the git steps stay manual.
+
 Commands are marked **READ** (no change to the cluster) or **WRITE**. Do the READ checks; do not skip them.
 All names below are placeholders: `<cluster>` is the workload cluster name, `<mc>` is the management cluster name,
 `<ns>` is the namespace that holds the HelmRelease, `<app>` is the HelmApp name.

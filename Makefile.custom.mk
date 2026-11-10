@@ -17,3 +17,7 @@ test-cel: ## XRD schema and CEL rules, offline, with valid and rejected HelmApps
 .PHONY: test-kcl
 test-kcl: ## KCL unit tests of the values merge function (needs kcl).
 	kcl test ./helm/crossplane-app-platform/files/merge
+
+.PHONY: test-wrap
+test-wrap: ## Unit tests of the helmapp-wrap migration tool (needs uv).
+	uv run --directory tools/helmapp-wrap pytest -q
