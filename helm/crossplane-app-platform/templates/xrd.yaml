@@ -34,6 +34,7 @@ spec:
                     name: {type: string, minLength: 1}
                     repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
                     version: {type: string, minLength: 1, description: Exact version or semver range}
+                    semverFilter: {type: string, minLength: 1, description: "Regular expression on the tags, applied before the version range, like OCIRepository spec.ref.semverFilter"}
                     verify:
                       type: object
                       description: "Cosign verification of the chart. Default: GS CircleCI keyless identity for the GS registry, none elsewhere. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key)."

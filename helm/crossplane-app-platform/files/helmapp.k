@@ -106,7 +106,8 @@ _rsip = {
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
-        "filter" = {semver = spec.chart.version}
+        # chart.semverFilter has the same effect as OCIRepository spec.ref.semverFilter: a regex match on the tags before the semver range.
+        "filter" = {semver = spec.chart.version} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
         if _windows:
             schedule = _windows
     }
