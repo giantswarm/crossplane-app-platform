@@ -10,9 +10,9 @@ test-golden: ## Golden render tests (needs bin/crossplane v2 CLI, helm, Docker f
 test-rbac: ## helm template assertions for the customer RBAC (needs helm, yq).
 	./tests/rbac/run.sh
 
-.PHONY: test-schedule
-test-schedule: ## Checks the zero-window CEL rule text is in the XRD (needs helm, yq).
-	./tests/schedule/run.sh
+.PHONY: test-cel
+test-cel: ## XRD schema and CEL rules, offline, with valid and rejected HelmApps (needs bin/crossplane v2 CLI, helm).
+	./tests/cel/run.sh
 
 .PHONY: test-kcl
 test-kcl: ## KCL unit tests of the values merge function (needs kcl).

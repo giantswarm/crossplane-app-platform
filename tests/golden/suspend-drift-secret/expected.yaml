@@ -1,0 +1,138 @@
+---
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: hello-world
+  namespace: org-acme
+spec:
+  crossplane:
+    resourceRefs:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: hello-world
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSet
+      name: hello-world
+status:
+  conditions:
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: WatchCircuitClosed
+    status: "True"
+    type: Responsive
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    reason: ReconcileSuccess
+    status: "True"
+    type: Synced
+  - lastTransitionTime: "2024-01-01T00:00:00Z"
+    message: 'Unready resources: rset, rsip'
+    reason: Creating
+    status: "False"
+    type: Ready
+  message: Waiting for the input provider.
+  targets:
+  - cluster: acme01
+    message: ""
+    ready: false
+    version: ""
+  version: ""
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rset
+  labels:
+    crossplane.io/composite: hello-world
+  name: hello-world
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: hello-world
+    uid: 0bbc0242-e1d7-5436-a99e-805230a00d80
+spec:
+  dependsOn:
+  - apiVersion: fluxcd.controlplane.io/v1
+    kind: ResourceSetInputProvider
+    name: hello-world
+    namespace: org-acme
+    ready: true
+    readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
+  inputsFrom:
+  - kind: ResourceSetInputProvider
+    name: hello-world
+  resources:
+  - apiVersion: source.toolkit.fluxcd.io/v1
+    kind: OCIRepository
+    metadata:
+      name: hello-world
+      namespace: org-acme
+    spec:
+      interval: 5m
+      ref:
+        tag: << inputs.tag | quote >>
+      secretRef:
+        name: registry-creds
+      url: oci://registry.example.com/charts/hello-world
+  - apiVersion: helm.toolkit.fluxcd.io/v2
+    kind: HelmRelease
+    metadata:
+      name: acme01-hello-world
+      namespace: org-acme
+    spec:
+      chartRef:
+        kind: OCIRepository
+        name: hello-world
+      driftDetection:
+        mode: enabled
+      install:
+        remediation:
+          retries: 10
+      interval: 5m
+      kubeConfig:
+        secretRef:
+          name: acme01-kubeconfig
+      releaseName: hello-world
+      storageNamespace: hello
+      suspend: true
+      targetNamespace: hello
+      upgrade:
+        remediation:
+          retries: 10
+          strategy: rollback
+      valuesFrom:
+      - kind: ConfigMap
+        name: acme01-cluster-values
+        optional: true
+      - kind: ConfigMap
+        name: acme01-hello-world-user-values
+        optional: true
+      - kind: Secret
+        name: acme01-hello-world-user-values
+        optional: true
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  annotations:
+    crossplane.io/composition-resource-name: rsip
+  labels:
+    crossplane.io/composite: hello-world
+  name: hello-world
+  namespace: org-acme
+  ownerReferences:
+  - apiVersion: apps.giantswarm.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: HelmApp
+    name: hello-world
+    uid: 0bbc0242-e1d7-5436-a99e-805230a00d80
+spec:
+  filter:
+    semver: 1.2.3
+  secretRef:
+    name: registry-creds
+  type: OCIArtifactTag
+  url: oci://registry.example.com/charts/hello-world

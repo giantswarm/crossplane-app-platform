@@ -24,9 +24,8 @@ status:
     status: "True"
     type: Synced
   - lastTransitionTime: "2024-01-01T00:00:00Z"
-    message: 'Unready resources: rset, rsip'
-    reason: Creating
-    status: "False"
+    reason: Available
+    status: "True"
     type: Ready
   message: ""
   targets:

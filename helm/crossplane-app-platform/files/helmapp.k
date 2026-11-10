@@ -37,6 +37,9 @@ _user_checks = spec.healthCheckExprs or []
 _checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVersion == d.apiVersion and u.kind == d.kind]] + _user_checks
 
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
+# function-kcl leaves readiness Unspecified without krm.kcl.dev/ready, and then Crossplane never marks the HelmApp Ready.
+_is_ready = lambda r -> bool { len([c for c in (r?.status?.conditions or []) if c.type == "Ready" and c.status == "True"]) > 0 }
+_ready_annot = lambda b: bool -> {str:str} { {"krm.kcl.dev/ready" = "True" if b else "False"} }
 
 # The MC name (for in-cluster targets) comes from the MC's own ConfigMap, read as an extra resource.
 _er = option("params")?.extraResources or {}
@@ -80,9 +83,11 @@ _helmrelease = lambda t -> {str:} {
                 storageNamespace = spec.namespace
             if _deps:
                 dependsOn = _deps
+            if spec.suspend:
+                suspend = True
             install = {remediation = {retries = 10}}
             upgrade = {remediation = {retries = 10, strategy = "rollback"}}
-            driftDetection = {mode = "warn"}
+            driftDetection = {mode = spec.driftDetection?.mode or "warn"}
             # CEL checks run only with wait enabled (disableWait unset) and the poller strategy.
             if _checks:
                 waitStrategy = {name = "poller"}
@@ -95,6 +100,22 @@ _helmrelease = lambda t -> {str:} {
     }
 }
 
+# Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
+_hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
+_ocds = option("params").ocds
+_exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
+_hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
+_target = lambda t -> {str:} {
+    _h = _hr(t)
+    {
+        cluster = _tcluster(t)
+        version = ((_h.status?.history or [{}])[0]?.chartVersion) or ""
+        ready = _is_ready(_h)
+        message = ([c for c in (_h.status?.conditions or []) if c.type == "Ready"] or [{}])[0]?.message or ""
+    }
+}
+_targets = [_target(t) for t in spec.targets.static]
+
 _windows = spec.schedule?.windows or []
 # Day 0: requestedAt == forceAt makes the RSIP skip its schedule check once (fluxcd/pkg apis/meta annotations.go:126-141); see docs/schedule.md.
 _day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/forceAt" = "day-0"} if _windows and spec.schedule?.forceInstallOutsideWindow else {}
@@ -102,10 +123,12 @@ _day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/force
 _rsip = {
     apiVersion = FLUX_CP
     kind = "ResourceSetInputProvider"
-    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0}
+    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_ocds?.rsip?.Resource))}
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
+        if spec.chart?.secretRef:
+            secretRef = spec.chart.secretRef
         # chart.semverFilter has the same effect as OCIRepository spec.ref.semverFilter: a regex match on the tags before the semver range.
         "filter" = {semver = spec.chart.version} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
         if _windows:
@@ -116,7 +139,8 @@ _rsip = {
 _rset = {
     apiVersion = FLUX_CP
     kind = "ResourceSet"
-    metadata = {name = name, namespace = ns, annotations = _annot("rset")}
+    # The HelmApp Ready condition also needs every target HelmRelease Ready.
+    metadata = {name = name, namespace = ns, annotations = _annot("rset") | _ready_annot(_is_ready(_ocds?.rset?.Resource) and all t in _targets { t.ready })}
     spec = {
         inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
         if _sa:
@@ -135,13 +159,11 @@ _rset = {
             apiVersion = "source.toolkit.fluxcd.io/v1"
             kind = "OCIRepository"
             metadata = {name = name, namespace = ns, **_prune_guard}
-            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {})}
+            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {}), **({"secretRef" = spec.chart.secretRef} if spec.chart?.secretRef else {})}
         }] + [_helmrelease(t) for t in spec.targets.static]
     }
 }
 
-# Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
-_hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
 _hr_req = {
     apiVersion = "meta.krm.kcl.dev/v1alpha1"
     kind = "ExtraResources"
@@ -155,19 +177,6 @@ _hr_req = {
     } | _mc_req
 }
 
-_ocds = option("params").ocds
-_exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
-_hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
-_ready_cond = lambda h -> [{str:}] { [c for c in (h.status?.conditions or []) if c.type == "Ready"] }
-_target = lambda t -> {str:} {
-    {
-        cluster = _tcluster(t)
-        version = ((_hr(t).status?.history or [{}])[0]?.chartVersion) or ""
-        ready = len([c for c in _ready_cond(_hr(t)) if c.status == "True"]) > 0
-        message = (_ready_cond(_hr(t)) or [{}])[0]?.message or ""
-    }
-}
-_targets = [_target(t) for t in spec.targets.static]
 
 _next = _ocds?.rsip?.Resource?.status?.nextSchedule?.when
 _status = {

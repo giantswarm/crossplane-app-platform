@@ -38,4 +38,4 @@ inside a window and while the RSIP is not skipping. KCL copies the value, no clo
 ## Tests
 
 `make test-golden` fixtures `scheduled` (schedule mapped, `nextWindow` from an observed RSIP) and `scheduled-force` (annotations).
-`make test-schedule` checks that the CEL rule text is in the XRD. `crossplane render` does not validate against the XRD, so the live rejection of a zero window is untested.
+`make test-cel` validates a zero window against the XRD with `crossplane resource validate`, offline. A live API server rejection is not tested.
