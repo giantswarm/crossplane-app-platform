@@ -8,6 +8,5 @@ spec:
     - {kind: ConfigMap, name: global-values}
   targets:
     static:
-      - cluster: mc01
-        inCluster: true
+      - inCluster: true
         values: {a: 1}

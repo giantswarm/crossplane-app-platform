@@ -38,6 +38,16 @@ _checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVe
 
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
 
+# The MC name (for in-cluster targets) comes from the MC's own ConfigMap, read as an extra resource.
+_er = option("params")?.extraResources or {}
+_needs_mc = len([t for t in spec.targets.static if t?.inCluster]) > 0
+_mc_req = {"mc-metadata" = {apiVersion = "v1", kind = "ConfigMap", matchName = "management-cluster-metadata", matchNamespace = "flux-giantswarm"}} if _needs_mc else {}
+# The first function call has no extra resources yet; Crossplane calls again with them, so only a later call can fail.
+_mc_seen = "mc-metadata" in _er
+MC = ((_er["mc-metadata"] or [{}])[0]?.Resource?.data?.NAME or "") if _mc_seen else ""
+assert not _mc_seen or MC, "in-cluster target needs ConfigMap flux-giantswarm/management-cluster-metadata with key NAME"
+_tcluster = lambda t -> str { MC if t?.inCluster else t.cluster }
+
 # valuesFrom layers, lowest to highest: derived cluster values, global, per target, derived user values; spec.values is applied last by Flux.
 _values_from = lambda t -> [{str:}] {
     _derived = not t?.inCluster
@@ -49,7 +59,7 @@ _values_from = lambda t -> [{str:}] {
 _helmrelease = lambda t -> {str:} {
     _vf = _values_from(t)
     _values = merge_values(spec.values or {}, t.values or {})
-    _cluster = MC if t.inCluster else t.cluster
+    _cluster = _tcluster(t)
     _deps = [{name = n} for n in spec.dependsOn?.static or []] + [{name = n.replace("%cluster%", _cluster)} for n in spec.dependsOn?.templated or []]
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
@@ -121,7 +131,7 @@ _rset = {
 }
 
 # Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
-_hr_key = lambda t -> str { "hr-${t.cluster}" }
+_hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
 _hr_req = {
     apiVersion = "meta.krm.kcl.dev/v1alpha1"
     kind = "ExtraResources"
@@ -129,20 +139,19 @@ _hr_req = {
         _hr_key(t) = {
             apiVersion = "helm.toolkit.fluxcd.io/v2"
             kind = "HelmRelease"
-            matchName = "${t.cluster}-${name}"
+            matchName = "${_tcluster(t)}-${name}"
             matchNamespace = ns
         } for t in spec.targets.static
-    }
+    } | _mc_req
 }
 
 _ocds = option("params").ocds
-_er = option("params")?.extraResources or {}
 _exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
 _hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
 _ready_cond = lambda h -> [{str:}] { [c for c in (h.status?.conditions or []) if c.type == "Ready"] }
 _target = lambda t -> {str:} {
     {
-        cluster = t.cluster
+        cluster = _tcluster(t)
         version = ((_hr(t).status?.history or [{}])[0]?.chartVersion) or ""
         ready = len([c for c in _ready_cond(_hr(t)) if c.status == "True"]) > 0
         message = (_ready_cond(_hr(t)) or [{}])[0]?.message or ""

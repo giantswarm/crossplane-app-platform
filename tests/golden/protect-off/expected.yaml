@@ -30,7 +30,8 @@ status:
     type: Ready
   message: Waiting for the input provider.
   targets:
-  - message: ""
+  - cluster: mc01
+    message: ""
     ready: false
     version: ""
   version: ""
