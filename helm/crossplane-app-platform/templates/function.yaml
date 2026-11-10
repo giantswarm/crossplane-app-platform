@@ -1,8 +1,0 @@
-apiVersion: pkg.crossplane.io/v1
-kind: Function
-metadata:
-  name: function-kcl
-  labels:
-    {{- include "labels.common" . | nindent 4 }}
-spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.3
