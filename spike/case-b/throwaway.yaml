@@ -23,6 +23,7 @@ spec:
     - apiVersion: fluxcd.controlplane.io/v1
       kind: ResourceSetInputProvider
       name: ${NEW_HR_NAME}
+      namespace: ${NAMESPACE}
       ready: true
       readyExpr: "has(status.exportedInputs) && size(status.exportedInputs) > 0"
   resources:

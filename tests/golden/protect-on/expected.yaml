@@ -57,6 +57,7 @@ spec:
   - apiVersion: fluxcd.controlplane.io/v1
     kind: ResourceSetInputProvider
     name: release-aws
+    namespace: org-acme
     ready: true
     readyExpr: has(status.exportedInputs) && size(status.exportedInputs) > 0
   inputsFrom:

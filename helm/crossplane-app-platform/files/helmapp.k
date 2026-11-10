@@ -117,7 +117,9 @@ _rset = {
         dependsOn = [{
             apiVersion = FLUX_CP
             kind = "ResourceSetInputProvider"
+            # flux-operator rejects a dependsOn entry with a name and no namespace (checked live).
             name = name
+            namespace = ns
             ready = True
             readyExpr = "has(status.exportedInputs) && size(status.exportedInputs) > 0"
         }]

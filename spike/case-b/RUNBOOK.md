@@ -170,18 +170,34 @@ At any point before Check 3, to put the old delivery back:
 3. If an upgrade failed and left the release in a bad state: the manifests set `upgrade.remediation.strategy: rollback`, so helm-controller rolls back by itself;
    otherwise `helm -n $NAMESPACE rollback $RELEASE_NAME <vN>` by hand. The Helm release secrets backed up in step 1 of the old-object section are the last resort.
 
-## Findings (fill in)
+## Findings (throwaway run, 2026-11-10)
+
+Run on a GS management cluster with a throwaway `hello-world` release (3.2.3 installed by a plain HelmRelease,
+adopted with 3.2.4 by `throwaway.yaml`). All objects were removed after the run. Check 2 and Check 4 did not run.
 
 | Item | Result |
 |---|---|
-| Versions (helm-controller, flux-operator, chart) | |
-| Check 1: revision before -> after, uninstall seen? | |
-| Check 2: CAPI UIDs/generations unchanged? Machines untouched? | |
-| Check 3: HelmRelease and release survive ResourceSet delete? State of the orphaned HelmRelease? | |
-| Check 4: Ready=True? Time to Ready | |
-| Old object removal: what owned it, how suspended/deleted | |
-| Surprises (values diff, field ownership, OCIRepository pruned, events) | |
-| Changes needed in the PRD / migration procedure | |
+| Versions (helm-controller, flux-operator, chart) | helm-controller v1.4.5, flux-operator v0.62.1, source-controller v1.7.4; chart `hello-world` 3.2.3 -> 3.2.4 |
+| Check 1: revision before -> after, uninstall seen? | Pass. `.v1` "Install complete" -> `.v2` "Upgrade complete", no uninstall, no fresh install. Log: `release not managed by controller: found existing release in storage`, then `running 'upgrade' action`. The pod was replaced only because the chart version changed its labels. |
+| Check 2: CAPI UIDs/generations unchanged? Machines untouched? | Not run. |
+| Check 3: HelmRelease and release survive ResourceSet delete? State of the orphaned HelmRelease? | Pass, with the prune guard on the HelmRelease and the OCIRepository. Both objects and the release survived, the pod was untouched, the HelmRelease stayed `Ready=True`. A re-applied ResourceSet took both objects back into its inventory with no new Helm revision. |
+| Check 4: Ready=True? Time to Ready | Not run: helm-controller v1.4.5 has no `healthCheckExprs` / `waitStrategy` (not in the CRD). Needs >= v1.5.0. |
+| Old object removal: what owned it, how suspended/deleted | Applied by hand. Suspend, then delete: no uninstall, release secret `.v1` kept. |
+| Surprises | See below. |
+| Changes needed in the PRD / migration procedure | See below. |
+
+Surprises, all fixed in the manifests here unless noted:
+
+1. flux-operator rejects a `dependsOn` entry with a `name` and no `namespace`:
+   `an empty namespace may not be set when a resource name is provided`. The ResourceSet never gets ready.
+   Fixed here and in the HelmApp render.
+2. GS Kyverno policies `flux-multi-tenancy` and `flux-operator-multi-tenancy` deny a HelmRelease with no
+   `spec.serviceAccountName` (or `spec.kubeConfig.secretRef`) and a ResourceSet with no `spec.serviceAccountName`,
+   in every namespace except `flux-giantswarm`, `giantswarm` and `monitoring`. **Not fixed in the HelmApp render.**
+   The spike used a ServiceAccount with the `admin` ClusterRole plus a Role for `helmreleases` and `ocirepositories`.
+3. The `admin` ClusterRole does not include the Flux kinds, and the GS ClusterRole `write-flux-resources` has no
+   `ocirepositories`. The ResourceSet ServiceAccount needs both kinds.
+4. The chart default values can fail admission (the `hello-world` ingress class). Not a HelmApp problem.
 
 Known gaps found while preparing (to confirm or drop): the PRD render of the HelmRelease has no `spec.interval`, which is required by the
 HelmRelease CRD (`api/v2/helmrelease_types.go:60-64`); the manifests here set `interval: 5m`.
