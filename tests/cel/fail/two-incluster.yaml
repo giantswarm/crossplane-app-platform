@@ -1,0 +1,7 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: x, namespace: org-acme}
+spec:
+  namespace: hello
+  chart: {name: hello-world, version: "1.0.0"}
+  targets: {static: [{inCluster: true}, {inCluster: true}]}

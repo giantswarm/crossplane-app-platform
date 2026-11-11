@@ -88,6 +88,14 @@ Not following these limitations will most likely result in a broken deployment.
 
 - _add limitation_
 
+## HelmApp
+
+`helm/crossplane-app-platform` packages the HelmApp XRD, Composition (function-kcl source in
+`helm/crossplane-app-platform/files/helmapp.k`) and the aggregated ClusterRole. It uses the `function-kcl` Function the platform installs on every MC (management-cluster-bases `extras/crossplane/functions`); the golden tests use the same package.
+Nothing is deployed from here. Golden tests: install the Crossplane v2 CLI as `bin/crossplane`
+(https://cli.crossplane.io/stable/current/bin/linux_amd64/crossplane), then `make test-golden` (`UPDATE=1` rewrites
+expected files) and `make test-cel` (XRD rules, offline). CEL question: see [docs/xrd-cel.md](docs/xrd-cel.md). Move an existing HelmRelease under a HelmApp: see [docs/migration.md](docs/migration.md).
+
 ## Credit
 
 - https://github.com/giantswarm/crossplane-app-platform

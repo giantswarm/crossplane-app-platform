@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "name" . }}-flux-operator
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+    {{- include "labels.common" . | nindent 4 }}
+rules:
+  - apiGroups: [fluxcd.controlplane.io]
+    resources: [resourcesetinputproviders, resourcesets]
+    verbs: ["*"]
+  # Read-only: the HelmApp status reads the per-target HelmReleases.
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]

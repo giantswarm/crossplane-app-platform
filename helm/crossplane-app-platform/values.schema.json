@@ -58,6 +58,15 @@
             "type": "object",
             "additionalProperties": true
         },
+        "helmController": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "healthChecks": {
+                    "type": "boolean"
+                }
+            }
+        },
         "image": {
             "type": "object",
             "additionalProperties": false,

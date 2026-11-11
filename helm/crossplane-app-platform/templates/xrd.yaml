@@ -1,0 +1,139 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: helmapps.apps.giantswarm.io
+  labels:
+    {{- include "labels.common" . | nindent 4 }}
+spec:
+  scope: Namespaced
+  group: apps.giantswarm.io
+  names:
+    kind: HelmApp
+    plural: helmapps
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [chart, targets, namespace]
+              properties:
+                chart:
+                  type: object
+                  required: [name, version]
+                  # CEL on a nested object: checked in docs/xrd-cel.md to reach the XR CRD.
+                  x-kubernetes-validations:
+                    - rule: "!self.name.contains('/')"
+                      message: chart.name must not contain a slash
+                  properties:
+                    name: {type: string, minLength: 1}
+                    repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
+                    version: {type: string, minLength: 1, description: Exact version or semver range}
+                    semverFilter: {type: string, minLength: 1, description: "Regular expression on the tags, applied before the version range, like OCIRepository spec.ref.semverFilter"}
+                    secretRef:
+                      type: object
+                      description: Registry credentials Secret in the HelmApp namespace, used by the RSIP and the OCIRepository
+                      required: [name]
+                      properties:
+                        name: {type: string, minLength: 1}
+                    verify:
+                      type: object
+                      description: "Cosign verification of the chart. Default: GS CircleCI keyless identity for the GS registry, none elsewhere. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key)."
+                      required: [provider]
+                      properties:
+                        provider: {type: string, enum: [cosign]}
+                        secretRef:
+                          type: object
+                          required: [name]
+                          properties:
+                            name: {type: string, minLength: 1}
+                        matchOIDCIdentity:
+                          type: array
+                          items:
+                            type: object
+                            required: [issuer, subject]
+                            properties:
+                              issuer: {type: string}
+                              subject: {type: string}
+                targets:
+                  type: object
+                  required: [static]
+                  properties:
+                    static:
+                      type: array
+                      minItems: 1
+                      # maxItems bounds the CEL cost of the nested filter below.
+                      maxItems: 100
+                      # Two entries for one cluster render two HelmReleases with the same name.
+                      x-kubernetes-validations:
+                        - rule: "self.filter(t, has(t.cluster)).all(t, self.filter(u, has(u.cluster) && u.cluster == t.cluster).size() == 1)"
+                          message: each cluster can be a target only once
+                        - rule: "self.filter(t, has(t.inCluster)).size() <= 1"
+                          message: only one inCluster target is allowed
+                      items:
+                        type: object
+                        x-kubernetes-validations:
+                          - rule: "has(self.cluster) != has(self.inCluster)"
+                            message: set exactly one of cluster and inCluster
+                        properties:
+                          cluster: {type: string, minLength: 1, maxLength: 63, description: Remote target, uses <cluster>-kubeconfig}
+                          inCluster: {type: boolean, enum: [true], description: The management cluster itself, no kubeconfig}
+                          values: {type: object, x-kubernetes-preserve-unknown-fields: true, description: Deep-merged over spec.values, null removes a key}
+                          valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
+                values: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
+                dependsOn:
+                  type: object
+                  properties:
+                    static: {type: array, items: {type: string, minLength: 1}, description: HelmRelease names copied into every HelmRelease}
+                    templated: {type: array, items: {type: string, minLength: 1}, description: "Names with %cluster% replaced per target"}
+                helmReleaseOverrides:
+                  type: object
+                  properties:
+                    releaseName: {type: string, minLength: 1}
+                    serviceAccountName: {type: string, minLength: 1, description: "Copied from the original HelmRelease. Set on every HelmRelease and on the ResourceSet; unset means none."}
+                schedule:
+                  type: object
+                  description: Upgrade windows. New chart versions are exported only inside a window.
+                  properties:
+                    windows:
+                      type: array
+                      items:
+                        type: object
+                        required: [cron, window]
+                        # A zero window turns the whole schedule off in the RSIP; one under 2x its 2m timeout stalls it (flux-operator internal/schedule/scheduler.go:51-56).
+                        x-kubernetes-validations:
+                          - rule: "duration(self.window) >= duration('4m')"
+                            message: window must be at least 4m (a zero window disables the schedule)
+                        properties:
+                          cron: {type: string, minLength: 1}
+                          timeZone: {type: string}
+                          window: {type: string, pattern: '^([0-9]+(\.[0-9]+)?(ms|s|m|h))+$', description: "Go duration, for example 4h"}
+                    forceInstallOutsideWindow: {type: boolean, description: Install the first version at once, outside a window}
+                driftDetection:
+                  type: object
+                  properties:
+                    mode: {type: string, enum: [enabled, warn, disabled], default: warn, description: HelmRelease drift detection mode for every target}
+                suspend: {type: boolean, description: Suspend every rendered HelmRelease}
+                protect: {type: boolean, description: "Render fluxcd.controlplane.io/prune disabled on the HelmReleases. Default true for cluster-* and release-* charts, false otherwise."}
+                healthCheckExprs:
+                  type: array
+                  description: "CEL health checks passed to every HelmRelease (needs helm-controller v1.5.0 or later). Adds to the default for protected cluster-* charts; an entry with the same apiVersion and kind replaces it."
+                  items:
+                    type: object
+                    required: [apiVersion, kind, current]
+                    properties:
+                      apiVersion: {type: string, minLength: 1}
+                      kind: {type: string, minLength: 1}
+                      current: {type: string, minLength: 1}
+                      inProgress: {type: string}
+                      failed: {type: string}
+                namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true

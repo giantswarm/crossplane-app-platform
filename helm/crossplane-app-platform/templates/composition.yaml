@@ -1,0 +1,23 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: helmapps.apps.giantswarm.io
+  labels:
+    {{- include "labels.common" . | nindent 4 }}
+spec:
+  compositeTypeRef:
+    apiVersion: apps.giantswarm.io/v1alpha1
+    kind: HelmApp
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+{{ .Files.Get "files/merge/merge.k" | indent 12 }}
+            HEALTH_CHECKS = {{ if .Values.helmController.healthChecks }}True{{ else }}False{{ end }}
+{{ .Files.Get "files/helmapp.k" | indent 12 }}
