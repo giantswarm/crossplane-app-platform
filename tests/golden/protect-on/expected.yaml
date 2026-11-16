@@ -96,8 +96,7 @@ spec:
         mode: warn
       healthCheckExprs:
       - apiVersion: cluster.x-k8s.io/v1beta1
-        current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status ==
-          'True')
+        current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
         kind: Cluster
       install:
         remediation:
@@ -144,6 +143,7 @@ metadata:
     uid: 1c4ea1f3-240d-54c3-8e06-892139444f55
 spec:
   filter:
+    limit: 1
     semver: '>=3.0.0 <4.0.0'
   type: OCIArtifactTag
   url: oci://gsoci.azurecr.io/charts/giantswarm/release-aws

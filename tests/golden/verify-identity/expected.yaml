@@ -133,6 +133,7 @@ metadata:
     uid: 02ccd374-3fc0-5e17-959e-ac0bbb50737f
 spec:
   filter:
+    limit: 1
     semver: 6.7.1
   type: OCIArtifactTag
   url: oci://ghcr.io/stefanprodan/charts/podinfo

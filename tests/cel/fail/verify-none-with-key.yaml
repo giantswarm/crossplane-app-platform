@@ -1,3 +1,4 @@
+# expect: provider none takes no secretRef
 apiVersion: apps.giantswarm.io/v1alpha1
 kind: HelmApp
 metadata: {name: hello-world, namespace: org-acme}

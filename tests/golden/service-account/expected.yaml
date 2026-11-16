@@ -160,6 +160,7 @@ metadata:
     uid: accec6be-7e50-52c6-bcb2-07170227632c
 spec:
   filter:
+    limit: 1
     semver: 3.2.4
   type: OCIArtifactTag
   url: oci://gsoci.azurecr.io/charts/giantswarm/hello-world

@@ -131,6 +131,7 @@ metadata:
     uid: 0bbc0242-e1d7-5436-a99e-805230a00d80
 spec:
   filter:
+    limit: 1
     semver: 1.2.3
   secretRef:
     name: registry-creds

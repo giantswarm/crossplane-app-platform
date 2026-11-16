@@ -96,8 +96,7 @@ spec:
         mode: warn
       healthCheckExprs:
       - apiVersion: cluster.x-k8s.io/v1beta1
-        current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status ==
-          'True')
+        current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
         kind: Cluster
       - apiVersion: controlplane.cluster.x-k8s.io/v1beta1
         current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status ==
@@ -133,6 +132,7 @@ metadata:
     uid: 164b610f-6f55-5072-8138-b05b7bc44b88
 spec:
   filter:
+    limit: 1
     semver: '>=3.0.0 <4.0.0'
   type: OCIArtifactTag
   url: oci://gsoci.azurecr.io/charts/giantswarm/cluster-aws

@@ -1,0 +1,9 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: ingress-nginx, namespace: org-acme}
+spec:
+  chart: {name: ingress-nginx, version: ">=3.0.0 <4.0.0"}
+  # mc01 is the MC name in required.yaml, so both targets render HelmRelease mc01-ingress-nginx.
+  targets:
+    static: [{cluster: mc01}, {inCluster: true}]
+  namespace: kube-system

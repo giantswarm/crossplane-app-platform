@@ -1,3 +1,4 @@
+# expect: only one inCluster target is allowed
 apiVersion: apps.giantswarm.io/v1alpha1
 kind: HelmApp
 metadata: {name: x, namespace: org-acme}

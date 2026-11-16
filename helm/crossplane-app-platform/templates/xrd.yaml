@@ -32,7 +32,7 @@ spec:
                       message: chart.name must not contain a slash
                   properties:
                     name: {type: string, minLength: 1}
-                    repository: {type: string, description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
+                    repository: {type: string, pattern: '^oci://.+', description: "OCI chart repository, default oci://gsoci.azurecr.io/charts/giantswarm"}
                     version: {type: string, minLength: 1, description: Exact version or semver range}
                     semverFilter: {type: string, minLength: 1, description: "Regular expression on the tags, applied before the version range, like OCIRepository spec.ref.semverFilter"}
                     secretRef:
@@ -87,9 +87,9 @@ spec:
                           cluster: {type: string, minLength: 1, maxLength: 63, description: Remote target, uses <cluster>-kubeconfig}
                           inCluster: {type: boolean, enum: [true], description: The management cluster itself, no kubeconfig}
                           values: {type: object, x-kubernetes-preserve-unknown-fields: true, description: Deep-merged over spec.values, null removes a key}
-                          valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
+                          valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, targetPath: {type: string}, optional: {type: boolean}}}}
                 values: {type: object, x-kubernetes-preserve-unknown-fields: true}
-                valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, optional: {type: boolean}}}}
+                valuesFrom: {type: array, items: {type: object, required: [kind, name], properties: {kind: {type: string, enum: [ConfigMap, Secret]}, name: {type: string, minLength: 1}, valuesKey: {type: string}, targetPath: {type: string}, optional: {type: boolean}}}}
                 dependsOn:
                   type: object
                   properties:
@@ -97,6 +97,8 @@ spec:
                     templated: {type: array, items: {type: string, minLength: 1}, description: "Names with %cluster% replaced per target"}
                 helmReleaseOverrides:
                   type: object
+                  # Escape hatch: unknown keys are deep-merged into every HelmRelease spec, null removes a key.
+                  x-kubernetes-preserve-unknown-fields: true
                   properties:
                     releaseName: {type: string, minLength: 1}
                     serviceAccountName: {type: string, minLength: 1, description: "Copied from the original HelmRelease. Set on every HelmRelease and on the ResourceSet; unset means none."}
@@ -123,7 +125,7 @@ spec:
                   properties:
                     mode: {type: string, enum: [enabled, warn, disabled], default: warn, description: HelmRelease drift detection mode for every target}
                 suspend: {type: boolean, description: Suspend every rendered HelmRelease}
-                protect: {type: boolean, description: "Render fluxcd.controlplane.io/prune disabled on the HelmReleases. Default true for cluster-* and release-* charts, false otherwise."}
+                protect: {type: boolean, description: "Render fluxcd.controlplane.io/prune disabled on the HelmReleases and the OCIRepository. Default true for cluster-* and release-* charts, false otherwise."}
                 healthCheckExprs:
                   type: array
                   description: "CEL health checks passed to every HelmRelease (needs helm-controller v1.5.0 or later). Adds to the default for protected cluster-* charts; an entry with the same apiVersion and kind replaces it."

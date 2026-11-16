@@ -134,6 +134,7 @@ metadata:
 spec:
   filter:
     includeTag: ^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$
+    limit: 1
     semver: '>=0.0.0-0'
   type: OCIArtifactTag
   url: oci://gsoci.azurecr.io/charts/giantswarm/hello-world

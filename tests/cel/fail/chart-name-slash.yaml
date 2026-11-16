@@ -1,3 +1,4 @@
+# expect: chart.name must not contain a slash
 apiVersion: apps.giantswarm.io/v1alpha1
 kind: HelmApp
 metadata: {name: x, namespace: org-acme}

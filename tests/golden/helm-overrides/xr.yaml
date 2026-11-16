@@ -1,0 +1,18 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: hello, namespace: org-acme}
+spec:
+  chart: {name: hello-world, version: "3.2.4"}
+  targets:
+    static:
+      - cluster: acme01
+        valuesFrom: [{kind: Secret, name: t-secret, targetPath: a.b}]
+      - cluster: acme02
+  namespace: hello
+  valuesFrom: [{kind: ConfigMap, name: g, valuesKey: v, targetPath: x.y}]
+  # releaseName and serviceAccountName are the declared keys; the rest is merged into every HelmRelease spec, null removes a key.
+  helmReleaseOverrides:
+    releaseName: hello-rel
+    timeout: 10m
+    install: {remediation: {retries: 3, remediateLastFailure: true}}
+    upgrade: {remediation: {strategy: null}}

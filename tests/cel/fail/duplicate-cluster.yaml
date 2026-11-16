@@ -1,3 +1,4 @@
+# expect: each cluster can be a target only once
 apiVersion: apps.giantswarm.io/v1alpha1
 kind: HelmApp
 metadata: {name: x, namespace: org-acme}

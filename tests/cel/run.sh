@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# XRD validation tests, offline: pass/*.yaml must validate, fail/*.yaml must be rejected.
+# XRD validation tests, offline: pass/*.yaml must validate, fail/*.yaml must be rejected with the text of its '# expect:' line.
 set -euo pipefail
 cd "$(dirname "$0")"
 XP=${CROSSPLANE:-../../bin/crossplane}
@@ -10,7 +10,10 @@ for f in pass/*.yaml; do
   if out=$("$XP" resource validate "$tmp/xrd.yaml" "$f" 2>&1); then echo "PASS $f"; else echo "FAIL $f"; echo "$out"; rc=1; fi
 done
 for f in fail/*.yaml; do
-  if "$XP" resource validate "$tmp/xrd.yaml" "$f" >/dev/null 2>&1; then echo "FAIL $f (accepted)"; rc=1; else echo "PASS $f"; fi
+  want=$(sed -n 's/^# expect: //p' "$f")
+  [ -n "$want" ] || { echo "FAIL $f (no '# expect:' line)"; rc=1; continue; }
+  if out=$("$XP" resource validate "$tmp/xrd.yaml" "$f" 2>&1); then echo "FAIL $f (accepted)"; rc=1
+  elif grep -qF "$want" <<<"$out"; then echo "PASS $f"; else echo "FAIL $f (expected: $want)"; echo "$out"; rc=1; fi
 done
 # The status the composition writes (golden xr.yaml spec + expected.yaml status): Crossplane applies it with a
 # typed patch, so a field missing from the XRD status schema fails on the cluster.

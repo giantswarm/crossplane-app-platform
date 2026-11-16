@@ -148,6 +148,7 @@ metadata:
     uid: 848c3fa4-eb9c-5784-833d-0b3143ee9184
 spec:
   filter:
+    limit: 1
     semver: '>=3.0.0 <4.0.0'
   type: OCIArtifactTag
   url: oci://gsoci.azurecr.io/charts/giantswarm/ingress-nginx

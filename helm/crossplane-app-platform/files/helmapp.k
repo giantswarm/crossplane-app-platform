@@ -3,9 +3,9 @@ oxr = option("params").oxr
 spec = oxr.spec
 name = oxr.metadata.name
 ns = oxr.metadata.namespace
-repo = spec.chart?.repository or "oci://gsoci.azurecr.io/charts/giantswarm"
-chart_url = "${repo}/${spec.chart.name}"
 GS_REPO = "oci://gsoci.azurecr.io/charts/giantswarm"
+repo = spec.chart?.repository or GS_REPO
+chart_url = "${repo}/${spec.chart.name}"
 # Regexes as architect-orb verifies its own signatures: https://github.com/giantswarm/architect-orb/blob/main/docs/cosign-signing.md
 # shortcut: matches any CircleCI project. The Fulcio cert carries the org id only in an extension that Flux cannot match
 # (issuer is plain https://oidc.circleci.com, subject has the project id); upgrade if Flux gets extension matching.
@@ -30,7 +30,7 @@ _protect = spec.protect if spec.protect != Undefined else _is_cluster_chart
 _default_checks = [{
     apiVersion = "cluster.x-k8s.io/v1beta1"
     kind = "Cluster"
-    current = "status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')"
+    current = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
 }] if HEALTH_CHECKS and _protect and _is_cluster_chart else []
 # The OCIRepository gets the guard too, so an orphaned HelmRelease keeps its source.
 _prune_guard = {annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {}
@@ -52,9 +52,15 @@ _needs_mc = len([t for t in spec.targets.static if t?.inCluster]) > 0
 _mc_req = {"mc-metadata" = {apiVersion = "v1", kind = "ConfigMap", matchName = "management-cluster-metadata", matchNamespace = "flux-giantswarm"}} if _needs_mc else {}
 # The first function call has no extra resources yet; Crossplane calls again with them, so only a later call can fail.
 _mc_seen = "mc-metadata" in _er
-MC = ((_er["mc-metadata"] or [{}])[0]?.Resource?.data?.NAME or "") if _mc_seen else ""
+# First extra resource found under a requirement key, or {}.
+_er_first = lambda k: str -> {str:} { (_er[k] or [{}])[0]?.Resource or {} }
+MC = (_er_first("mc-metadata")?.data?.NAME or "") if _mc_seen else ""
 assert not _mc_seen or MC, "in-cluster target needs ConfigMap flux-giantswarm/management-cluster-metadata with key NAME"
 _tcluster = lambda t -> str { MC if t?.inCluster else t.cluster }
+# The HelmRelease name, and the key of its extra resource.
+_hr_name = lambda t -> str { "${_tcluster(t)}-${name}" }
+_hr_names = [_hr_name(t) for t in spec.targets.static]
+assert len(_hr_names) == len({n: 1 for n in _hr_names}), "two targets render the same HelmRelease name (cluster <mc> together with inCluster: true is one target); remove one"
 
 # valuesFrom layers, lowest to highest: derived cluster values, global, per target, derived user values; spec.values is applied last by Flux.
 _values_from = lambda t -> [{str:}] {
@@ -66,6 +72,8 @@ _values_from = lambda t -> [{str:}] {
 
 # Same value as the original HelmRelease, or none. GS Kyverno (flux-multi-tenancy) needs it outside the GS namespaces.
 _sa = spec.helmReleaseOverrides?.serviceAccountName or ""
+# Escape hatch: every other helmReleaseOverrides key is deep-merged into each HelmRelease spec (null removes a key).
+_overrides = {k: v for k, v in (spec.helmReleaseOverrides or {}) if k not in ["releaseName", "serviceAccountName"]}
 
 _helmrelease = lambda t -> {str:} {
     _vf = _values_from(t)
@@ -75,8 +83,8 @@ _helmrelease = lambda t -> {str:} {
     {
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
-        metadata = {name = "${_cluster}-${name}", namespace = ns, **_prune_guard}
-        spec = {
+        metadata = {name = _hr_name(t), namespace = ns, **_prune_guard}
+        spec = merge_values({
             interval = "5m"
             releaseName = spec.helmReleaseOverrides?.releaseName or name
             chartRef = {kind = "OCIRepository", name = name}
@@ -101,15 +109,16 @@ _helmrelease = lambda t -> {str:} {
                 valuesFrom = _vf
             if _values:
                 values = _values
-        }
+        }, _overrides)
     }
 }
 
 # Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
 _hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
 _ocds = option("params").ocds
-_exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
-_hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
+_rsip_obs = _ocds?.rsip?.Resource
+_exported = _rsip_obs?.status?.exportedInputs or []
+_hr = lambda t -> {str:} { _er_first(_hr_key(t)) }
 _want = (_exported or [{}])[0]?.tag or ""
 _target = lambda t -> {str:} {
     _h = _hr(t)
@@ -132,20 +141,22 @@ _windows = spec.schedule?.windows or []
 _day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/forceAt" = "day-0"} if _windows and spec.schedule?.forceInstallOutsideWindow else {}
 
 # The observed RSIP has the old filter until Crossplane applies the new one, so its exportedInputs are stale.
-_rsip_obs = _ocds?.rsip?.Resource?.spec?.filter
-_rsip_current = _rsip_obs?.semver == spec.chart.version and _rsip_obs?.includeTag == spec.chart?.semverFilter
+# The API server adds limit itself, so only semver and includeTag are compared.
+_rsip_filter = _rsip_obs?.spec?.filter
+_rsip_current = _rsip_filter?.semver == spec.chart.version and _rsip_filter?.includeTag == spec.chart?.semverFilter
 
 _rsip = {
     apiVersion = FLUX_CP
     kind = "ResourceSetInputProvider"
-    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_ocds?.rsip?.Resource) and _rsip_current)}
+    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_rsip_obs) and _rsip_current)}
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
         if spec.chart?.secretRef:
             secretRef = spec.chart.secretRef
         # chart.semverFilter has the same effect as OCIRepository spec.ref.semverFilter: a regex match on the tags before the semver range.
-        "filter" = {semver = spec.chart.version} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
+        # limit 1: export only the newest matching tag; the RSIP default is 100.
+        "filter" = {semver = spec.chart.version, limit = 1} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
         if _windows:
             schedule = _windows
     }
@@ -186,14 +197,14 @@ _hr_req = {
         _hr_key(t) = {
             apiVersion = "helm.toolkit.fluxcd.io/v2"
             kind = "HelmRelease"
-            matchName = "${_tcluster(t)}-${name}"
+            matchName = _hr_name(t)
             matchNamespace = ns
         } for t in spec.targets.static
     } | _mc_req
 }
 
 
-_next = _ocds?.rsip?.Resource?.status?.nextSchedule?.when
+_next = _rsip_obs?.status?.nextSchedule?.when
 _status = {
     # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
     version = _want or ([t.version for t in _targets if t.version] or [""])[0]
