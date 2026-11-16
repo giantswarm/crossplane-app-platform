@@ -38,7 +38,7 @@ def ocirepo(url="oci://gsoci.azurecr.io/charts/giantswarm/ingress-nginx", tag="3
 
 
 def test_case_a_same_name_remote():
-    helmapp, case, warnings = wrap.wrap(converter_hr(), ocirepo(), "ingress-nginx")
+    helmapp, case, warnings, _ = wrap.wrap(converter_hr(), ocirepo(), "ingress-nginx")
     assert case == "A"
     assert helmapp["metadata"] == {"name": "ingress-nginx", "namespace": "org-acme"}
     s = helmapp["spec"]
@@ -56,7 +56,7 @@ def test_case_b_suffix_name_keeps_release_name_and_other_layers():
     hr = converter_hr(name="ingress-nginx-acme01")
     hr["spec"]["valuesFrom"].insert(1, {"kind": "ConfigMap", "name": "extra", "valuesKey": "values"})
     hr["spec"]["suspend"] = True
-    helmapp, case, warnings = wrap.wrap(hr, ocirepo(), "nginx")
+    helmapp, case, warnings, _ = wrap.wrap(hr, ocirepo(), "nginx")
     assert case == "B"
     s = helmapp["spec"]
     assert s["helmReleaseOverrides"] == {"releaseName": "ingress-nginx"}
@@ -70,7 +70,7 @@ def test_case_b_suffix_name_keeps_release_name_and_other_layers():
 def test_value_layer_order_change_is_reported():
     hr = converter_hr()
     hr["spec"]["valuesFrom"].append({"kind": "ConfigMap", "name": "extra"})
-    _, _, warnings = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    _, _, warnings, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert any("order" in w for w in warnings)
 
 
@@ -84,7 +84,7 @@ def test_cluster_chart_in_cluster_copies_value_layers_unchanged():
     ]
     hr["status"]["history"] = [{"chartVersion": "33.0.0"}]
     repo = ocirepo(url="oci://gsoci.azurecr.io/charts/giantswarm/release-aws", tag=">=33.0.0")
-    helmapp, case, _ = wrap.wrap(hr, repo, "acme01", mc_name="graveler")
+    helmapp, case, _, _ = wrap.wrap(hr, repo, "acme01", mc_name="graveler")
     assert case == "B"  # the MC HelmRelease is acme01, the HelmApp renders graveler-acme01
     s = helmapp["spec"]
     assert s["targets"] == {"static": [{"inCluster": True}]}
@@ -98,7 +98,7 @@ def test_cluster_chart_in_cluster_copies_value_layers_unchanged():
 def test_private_registry_and_custom_repository():
     repo = ocirepo(url="oci://registry.example.com/charts/app")
     repo["spec"]["secretRef"] = {"name": "pull"}
-    helmapp, _, _ = wrap.wrap(converter_hr(), repo, "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(converter_hr(), repo, "ingress-nginx")
     assert helmapp["spec"]["chart"] == {"name": "app", "repository": "oci://registry.example.com/charts",
                                         "version": "3.2.1", "secretRef": {"name": "pull"}}
 
@@ -106,30 +106,72 @@ def test_private_registry_and_custom_repository():
 def test_flux_default_release_name():
     hr = converter_hr()
     del hr["spec"]["releaseName"]
-    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert helmapp["spec"]["helmReleaseOverrides"] == {"releaseName": "kube-system-acme01-ingress-nginx"}
 
 
 def test_dependson_same_namespace():
     hr = converter_hr()
     hr["spec"]["dependsOn"] = [{"name": "acme01-cert-manager"}]
-    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert helmapp["spec"]["dependsOn"] == {"static": ["acme01-cert-manager"]}
 
 
 @pytest.mark.parametrize("change, message", [
     (lambda hr: hr["spec"].update(storageNamespace="other"), "storageNamespace"),
     (lambda hr: hr["spec"].update(chartRef={"kind": "HelmChart", "name": "x"}), "OCIRepository"),
-    (lambda hr: hr["spec"].update(postRenderers=[{}]), "postRenderers"),
+    (lambda hr: hr["spec"].update(chart={"spec": {"chart": "x"}}), "inline spec.chart"),
     (lambda hr: hr["spec"].update(kubeConfig={"secretRef": {"name": "acme01-kc"}}), "<cluster>-kubeconfig"),
+    (lambda hr: hr["spec"].update(kubeConfig={"configMapRef": {"name": "kc"}}), "only secretRef.name"),
+    (lambda hr: hr["spec"].update(kubeConfig={"secretRef": {"name": "acme01-kubeconfig", "key": "k"}}), "only secretRef.name"),
     (lambda hr: hr["spec"].update(dependsOn=[{"name": "x", "namespace": "other"}]), "another namespace"),
-    (lambda hr: hr["spec"]["valuesFrom"].append({"kind": "Secret", "name": "x", "targetPath": "a.b"}), "targetPath"),
 ])
 def test_stop_conditions(change, message):
     hr = converter_hr()
     change(hr)
     with pytest.raises(Stop, match=message):
         wrap.wrap(hr, ocirepo(), "ingress-nginx")
+
+
+def test_unknown_spec_fields_go_to_helmreleaseoverrides():
+    hr = converter_hr()
+    hr["spec"]["postRenderers"] = [{"kustomize": {"patches": []}}]
+    helmapp, _, warnings, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    assert helmapp["spec"]["helmReleaseOverrides"] == {"postRenderers": [{"kustomize": {"patches": []}}]}
+    assert any("postRenderers" in w for w in warnings)
+
+
+def test_values_from_target_path_is_kept():
+    hr = converter_hr()
+    item = {"kind": "Secret", "name": "x", "targetPath": "a.b"}
+    hr["spec"]["valuesFrom"].append(item)
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    assert item in helmapp["spec"]["valuesFrom"]
+
+
+def test_ocirepository_verify_maps_to_chart_verify():
+    repo = ocirepo()
+    verify = {"provider": "cosign", "matchOIDCIdentity": [{"issuer": "i", "subject": "s"}]}
+    repo["spec"]["verify"] = verify
+    helmapp, _, _, _ = wrap.wrap(converter_hr(), repo, "ingress-nginx")
+    assert helmapp["spec"]["chart"]["verify"] == verify
+    repo["spec"]["verify"] = {"provider": "cosign", "secretRef": {"name": "key"}}
+    helmapp, _, _, _ = wrap.wrap(converter_hr(), repo, "ingress-nginx")
+    assert helmapp["spec"]["chart"]["verify"] == {"provider": "cosign", "secretRef": {"name": "key"}}
+
+
+@pytest.mark.parametrize("spec_change, message", [
+    ({"certSecretRef": {"name": "ca"}}, "certSecretRef"),
+    ({"provider": "azure"}, "provider"),
+    ({"insecure": True}, "insecure"),
+    ({"verify": {"provider": "notation"}}, "verify must be provider cosign"),
+    ({"verify": {"provider": "cosign", "other": 1}}, "verify must be provider cosign"),
+])
+def test_ocirepository_unmapped_fields_stop(spec_change, message):
+    repo = ocirepo()
+    repo["spec"].update(spec_change)
+    with pytest.raises(Stop, match=message):
+        wrap.wrap(converter_hr(), repo, "ingress-nginx")
 
 
 def test_in_cluster_needs_mc_name_and_own_namespace():
@@ -144,7 +186,7 @@ def test_in_cluster_needs_mc_name_and_own_namespace():
 def test_version_from_tag_when_no_history():
     hr = converter_hr()
     del hr["status"]
-    helmapp, _, _ = wrap.wrap(hr, ocirepo(tag="3.0.0"), "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(tag="3.0.0"), "ingress-nginx")
     assert helmapp["spec"]["chart"]["version"] == "3.0.0"
 
 
@@ -223,17 +265,34 @@ def test_version_drops_the_flux_oci_digest_suffix():
     hr = converter_hr()
     hr["status"]["history"] = [{"chartVersion": "2.11.0+44ca5d53b7f2",
                                 "ociDigest": "sha256:44ca5d53b7f2d130d3e63df7d8048aac7cf09c5521fedd3b3ca7b8c3b94ff6ad"}]
-    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert helmapp["spec"]["chart"]["version"] == "2.11.0"
 
 
 def test_version_keeps_build_metadata_of_the_chart():
     hr = converter_hr()
     hr["status"]["history"] = [{"chartVersion": "2.11.0+build.7", "ociDigest": "sha256:44ca5d53b7f2d130"}]
-    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    helmapp, _, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert helmapp["spec"]["chart"]["version"] == "2.11.0+build.7"
 
 
-def test_steps_end_with_the_old_ocirepository():
-    assert wrap.steps("B", "ns", "old", "app", "mc", "old")[-1].endswith("remove the unused OCIRepository ns/old from git")
-    assert "prune" in wrap.steps("A", "ns", "app", "app", "mc", "app")[-1]
+def test_case_b_steps_remove_from_git_before_the_suspended_delete():
+    s = wrap.steps("B", "ns", "old", "app", "mc", "old")
+    assert [x.split(":")[0] for x in s] == ["WRITE (git)", "READ", "WRITE (git)", "WRITE", "READ", "WRITE (git)", "READ",
+                                             "WRITE (git)"]
+    assert "remove HelmRelease ns/old from git" in s[2]
+    assert s[3].startswith("WRITE: helmapp-wrap delete-suspended --context <mc-context> -n ns old --yes")
+    assert "add the HelmApp ns/app" in s[5]
+    assert s[-1].endswith("remove the unused OCIRepository ns/old from git")
+
+
+def test_case_a_steps():
+    s = wrap.steps("A", "ns", "mc-app", "app", "mc", "app")
+    assert [x.split(":")[0] for x in s] == ["WRITE (git)", "READ", "WRITE (git)", "READ", "WRITE (git)", "READ",
+                                             "WRITE (git)"]
+    assert "prune" in s[-1] and "OCIRepository ns/app" in s[-1]
+
+
+def test_wrap_returns_the_cluster():
+    assert wrap.wrap(converter_hr(), ocirepo(), "ingress-nginx")[3] == "acme01"
+    assert wrap.wrap(converter_hr(remote=False), ocirepo(), "x", mc_name="mc")[3] == "mc"

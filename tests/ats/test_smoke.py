@@ -6,7 +6,8 @@ cluster with `helm upgrade --install --wait` (the namespace from
 execute-chart-tests job of every branch build. ATS applies the Crossplane
 CRDs in tests/ats/crds first (`cluster-crds` in .ats/main.yaml), as the chart
 renders an XRD and a Composition. No Crossplane runs on the kind cluster, so
-the smoke checks that the objects exist, not that they work. Mark the checks
+the smoke checks that the cluster is reachable and the HelmApp XRD exists (the
+Composition is not checked), not that they work. Mark the checks
 that must hold across a chart upgrade with
 @pytest.mark.upgrade once .ats/main.yaml runs the upgrade scenario. The
 dependencies are the generated tests/ats/pyproject.toml, owned by

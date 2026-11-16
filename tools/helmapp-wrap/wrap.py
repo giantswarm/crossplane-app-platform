@@ -20,12 +20,17 @@ MC_METADATA = ("flux-giantswarm", "management-cluster-metadata")
 KUSTOMIZE_PRUNE = "kustomize.toolkit.fluxcd.io/prune"
 OPERATOR_PRUNE = "fluxcd.controlplane.io/prune"
 
-# HelmRelease spec fields that the HelmApp maps. All other fields are reported (WARN_FIELDS) or stop the move.
+# HelmRelease spec fields that the HelmApp maps. WARN_FIELDS are reported, `chart` stops the move, all other fields
+# go to spec.helmReleaseOverrides (deep-merged into every rendered HelmRelease).
 MAPPED_FIELDS = {"chartRef", "releaseName", "serviceAccountName", "kubeConfig", "targetNamespace",
                  "storageNamespace", "values", "valuesFrom", "dependsOn", "suspend"}
 # The HelmApp sets its own value (or none) for these. The move changes them, but not the rendered chart.
 WARN_FIELDS = {"interval", "timeout", "install", "upgrade", "rollback", "uninstall", "test", "driftDetection",
                "maxHistory", "persistentClient"}
+# OCIRepository spec fields that do not change what the HelmApp pulls. verify and secretRef are mapped; all other
+# fields (certSecretRef, provider, proxySecretRef, insecure, serviceAccountName, layerSelector, ...) stop the move.
+OCI_IGNORED = {"url", "ref", "interval", "timeout", "secretRef", "verify"}
+VERIFY_FIELDS = {"provider", "secretRef", "matchOIDCIdentity"}
 
 
 class Stop(Exception):
@@ -33,14 +38,16 @@ class Stop(Exception):
 
 
 def wrap(hr, ocirepo, app, mc_name=None):
-    """Return (helmapp, case, warnings) for a HelmRelease and its OCIRepository. Raise Stop on a stop condition."""
+    """Return (helmapp, case, warnings, cluster) for a HelmRelease and its OCIRepository. Raise Stop on a stop condition."""
     meta, spec = hr["metadata"], hr["spec"]
     ns, hr_name = meta["namespace"], meta["name"]
     warnings = []
 
+    if "chart" in spec:
+        raise Stop("the HelmRelease has an inline spec.chart, not a chartRef")
     other = sorted(set(spec) - MAPPED_FIELDS - WARN_FIELDS)
     if other:
-        raise Stop(f"spec fields the HelmApp does not support: {', '.join(other)}")
+        warnings.append(f"these fields go to helmReleaseOverrides: {', '.join(other)}")
     changed = sorted(set(spec) & WARN_FIELDS)
     if changed:
         warnings.append(f"these fields change to the HelmApp defaults: {', '.join(changed)}")
@@ -56,12 +63,23 @@ def wrap(hr, ocirepo, app, mc_name=None):
     if repository != DEFAULT_REPOSITORY:
         chart["repository"] = repository
     chart["version"] = _deployed_version(hr, ocirepo)
+    unmapped = sorted(set(ocirepo["spec"]) - OCI_IGNORED)
+    if unmapped:
+        raise Stop(f"OCIRepository spec fields the HelmApp does not support: {', '.join(unmapped)}")
     if ocirepo["spec"].get("secretRef"):
         chart["secretRef"] = {"name": ocirepo["spec"]["secretRef"]["name"]}
+    verify = ocirepo["spec"].get("verify")
+    if verify:
+        if set(verify) - VERIFY_FIELDS or verify.get("provider") != "cosign":
+            raise Stop("OCIRepository verify must be provider cosign with only provider, secretRef and matchOIDCIdentity")
+        chart["verify"] = verify
 
     target_ns = spec.get("targetNamespace", ns)
     storage_ns = spec.get("storageNamespace", ns)
-    kubeconfig = (spec.get("kubeConfig") or {}).get("secretRef", {}).get("name")
+    kc = spec.get("kubeConfig")
+    if kc and (set(kc) != {"secretRef"} or set(kc["secretRef"]) != {"name"}):
+        raise Stop("kubeConfig must be only secretRef.name (configMapRef and secretRef.key are not supported)")
+    kubeconfig = kc["secretRef"]["name"] if kc else None
     if kubeconfig:
         if not kubeconfig.endswith("-kubeconfig") or kubeconfig == "-kubeconfig":
             raise Stop(f"kubeConfig Secret {kubeconfig} is not named <cluster>-kubeconfig")
@@ -87,14 +105,13 @@ def wrap(hr, ocirepo, app, mc_name=None):
         overrides["releaseName"] = release
     if spec.get("serviceAccountName"):
         overrides["serviceAccountName"] = spec["serviceAccountName"]
+    overrides.update({k: spec[k] for k in other})
     if overrides:
         out["helmReleaseOverrides"] = overrides
 
     if spec.get("values"):
         out["values"] = spec["values"]
     values_from = list(spec.get("valuesFrom") or [])
-    if any(v.get("targetPath") for v in values_from):
-        raise Stop("valuesFrom with targetPath is not supported")
     if kubeconfig:
         values_from = _strip_derived_layers(values_from, cluster, app, warnings)
     if values_from:
@@ -114,7 +131,7 @@ def wrap(hr, ocirepo, app, mc_name=None):
     helmapp = {"apiVersion": "apps.giantswarm.io/v1alpha1", "kind": "HelmApp",
                "metadata": {"name": app, "namespace": ns}, "spec": out}
     case = "A" if hr_name == f"{cluster}-{app}" else "B"
-    return helmapp, case, warnings
+    return helmapp, case, warnings, cluster
 
 
 def _deployed_version(hr, ocirepo):
@@ -164,7 +181,7 @@ def steps(case, ns, hr_name, app, cluster, oci):
     if case == "A":
         return [
             f"WRITE (git): add {KUSTOMIZE_PRUNE}: disabled to HelmRelease {ns}/{hr_name}; let the Kustomization apply it",
-            f"READ: helmapp-wrap plan checks the annotation again; it must be on the live object",
+            "READ: helmapp-wrap plan checks the annotation again; it must be on the live object",
             f"WRITE (git): remove HelmRelease {ns}/{hr_name} from git",
             f"READ: HelmRelease {ns}/{hr_name} is still there and Ready=True",
             f"WRITE (git): add the HelmApp {ns}/{app}",
@@ -173,9 +190,9 @@ def steps(case, ns, hr_name, app, cluster, oci):
         ]
     return [
         f"WRITE (git): add {KUSTOMIZE_PRUNE}: disabled and spec.suspend: true to HelmRelease {ns}/{hr_name}",
-        f"READ: .spec.suspend is true and the annotation is on the live object",
-        f"WRITE: helmapp-wrap delete-suspended -n {ns} {hr_name} --yes (refuses when it is not suspended)",
+        "READ: .spec.suspend is true and the annotation is on the live object",
         f"WRITE (git): remove HelmRelease {ns}/{hr_name} from git",
+        f"WRITE: helmapp-wrap delete-suspended --context <mc-context> -n {ns} {hr_name} --yes (refuses when it is not suspended)",
         "READ: the Helm release secrets are still there and helm history has the same last revision",
         f"WRITE (git): add the HelmApp {ns}/{app}",
         f"READ: HelmRelease {ns}/{new} runs one upgrade, helm history has no uninstall, the HelmApp is Ready=True",
@@ -208,15 +225,13 @@ def get(context, kind, ns, name):
 def cmd_plan(a):
     hr = get(a.context, "helmrelease.helm.toolkit.fluxcd.io", a.namespace, a.name)
     ref = hr["spec"].get("chartRef") or {}
-    if ref.get("kind") != "OCIRepository":
-        raise Stop("the chart is not from an OCIRepository (spec.chartRef)")
-    ocirepo = get(a.context, "ocirepository.source.toolkit.fluxcd.io", ref.get("namespace", a.namespace), ref["name"])
+    # wrap() raises the Stop for any other kind, before it reads the OCIRepository.
+    ocirepo = (get(a.context, "ocirepository.source.toolkit.fluxcd.io", ref.get("namespace", a.namespace), ref["name"])
+               if ref.get("kind") == "OCIRepository" else None)
     mc_name = None
     if not hr["spec"].get("kubeConfig"):
         mc_name = get(a.context, "configmap", *MC_METADATA)["data"]["NAME"]
-    helmapp, case, warnings = wrap(hr, ocirepo, a.app, mc_name)
-    target = helmapp["spec"]["targets"]["static"][0]
-    cluster = target.get("cluster", mc_name)
+    helmapp, case, warnings, cluster = wrap(hr, ocirepo, a.app, mc_name)
     manifest = yaml.safe_dump(helmapp, sort_keys=False)
     if a.output:
         with open(a.output, "w") as f:
