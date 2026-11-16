@@ -7,6 +7,10 @@ metadata:
 status:
   conditions: [{type: Ready, status: "True", reason: ReconciliationSucceeded}]
   exportedInputs: [{id: "1", tag: 3.9.0, digest: "sha256:abc"}]
+spec:
+  filter:
+    limit: 100
+    semver: '>=3.0.0 <4.0.0'
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet

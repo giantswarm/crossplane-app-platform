@@ -42,7 +42,8 @@ _checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVe
 
 _annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
 # function-kcl leaves readiness Unspecified without krm.kcl.dev/ready, and then Crossplane never marks the HelmApp Ready.
-_is_ready = lambda r -> bool { len([c for c in (r?.status?.conditions or []) if c.type == "Ready" and c.status == "True"]) > 0 }
+# A Ready condition of an older generation is stale: the controller did not act on the new spec yet.
+_is_ready = lambda r -> bool { len([c for c in (r?.status?.conditions or []) if c.type == "Ready" and c.status == "True" and (not c.observedGeneration or c.observedGeneration == r.metadata?.generation)]) > 0 }
 _ready_annot = lambda b: bool -> {str:str} { {"krm.kcl.dev/ready" = "True" if b else "False"} }
 
 # The MC name (for in-cluster targets) comes from the MC's own ConfigMap, read as an extra resource.
@@ -119,8 +120,8 @@ _target = lambda t -> {str:} {
     {
         cluster = _tcluster(t)
         version = _v
-        # A Ready condition from an older spec or an older version is stale: the ResourceSet may not have applied the new one yet.
-        ready = _is_ready(_h) and _h.status?.observedGeneration == _h.metadata?.generation and (not _want or _v == _want)
+        # A Ready HelmRelease on another version is stale: the ResourceSet may not have applied the new spec yet.
+        ready = _is_ready(_h) and (not _want or _v == _want)
         message = ([c for c in (_h.status?.conditions or []) if c.type == "Ready"] or [{}])[0]?.message or ""
     }
 }
@@ -130,10 +131,14 @@ _windows = spec.schedule?.windows or []
 # Day 0: requestedAt == forceAt makes the RSIP skip its schedule check once (fluxcd/pkg apis/meta annotations.go:126-141); see docs/schedule.md.
 _day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/forceAt" = "day-0"} if _windows and spec.schedule?.forceInstallOutsideWindow else {}
 
+# The observed RSIP has the old filter until Crossplane applies the new one, so its exportedInputs are stale.
+_rsip_obs = _ocds?.rsip?.Resource?.spec?.filter
+_rsip_current = _rsip_obs?.semver == spec.chart.version and _rsip_obs?.includeTag == spec.chart?.semverFilter
+
 _rsip = {
     apiVersion = FLUX_CP
     kind = "ResourceSetInputProvider"
-    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_ocds?.rsip?.Resource))}
+    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_ocds?.rsip?.Resource) and _rsip_current)}
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
@@ -150,7 +155,7 @@ _rset = {
     apiVersion = FLUX_CP
     kind = "ResourceSet"
     # The HelmApp Ready condition also needs every target HelmRelease Ready.
-    metadata = {name = name, namespace = ns, annotations = _annot("rset") | _ready_annot(_is_ready(_ocds?.rset?.Resource) and all t in _targets { t.ready })}
+    metadata = {name = name, namespace = ns, annotations = _annot("rset") | _ready_annot(_is_ready(_ocds?.rset?.Resource) and _rsip_current and all t in _targets { t.ready })}
     spec = {
         inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
         if _sa:
