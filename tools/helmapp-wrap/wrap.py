@@ -231,7 +231,7 @@ def cmd_plan(a):
     annotations = hr["metadata"].get("annotations") or {}
     print(f"live: suspend={hr['spec'].get('suspend', False)} {KUSTOMIZE_PRUNE}={annotations.get(KUSTOMIZE_PRUNE)}",
           file=err)
-    for i, s in enumerate(steps(case, a.namespace, a.name, a.app, cluster, ocirepo["metadata"]["name"]), 1):
+    for i, s in enumerate(steps(case, a.namespace, a.name, a.app, cluster, ref["name"]), 1):
         print(f"{i}. {s}", file=err)
 
 
