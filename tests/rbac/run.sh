@@ -11,12 +11,17 @@ check '[select(.kind=="ClusterRole")] | length' 3
 for r in admin edit view; do
   role="select(.metadata.name==\"crossplane-app-platform-helmapp-$r\")"
   check "$role | .metadata.labels[\"rbac.authorization.k8s.io/aggregate-to-$r\"]" true
-  check "$role | .rules | length" 1
-  check "$role | .rules[0].apiGroups | join(\",\")" apps.giantswarm.io
-  check "$role | .rules[0].resources | join(\",\")" helmapps,helmapps/status
+  check "$role | .rules | length" 2
+  check "$role | .rules[] | .apiGroups | join(\",\")" $'apps.giantswarm.io\napps.giantswarm.io'
+  check "$role | .rules[0].resources | join(\",\")" helmapps
+  # the status is read-only for every role
+  check "$role | .rules[1].resources | join(\",\")" helmapps/status
+  check "$role | .rules[1].verbs | join(\",\")" get,list,watch
+done
+for r in admin edit; do
+  check "select(.metadata.name==\"crossplane-app-platform-helmapp-$r\") | .rules[0].verbs | join(\",\")" '*'
 done
 check 'select(.metadata.name=="crossplane-app-platform-helmapp-view") | .rules[0].verbs | join(",")' get,list,watch
-check 'select(.metadata.name=="crossplane-app-platform-helmapp-edit") | .rules[0].verbs | join(",")' '*'
 # nothing cluster-wide beyond ClusterRoles, no Secret/ConfigMap access, no PolicyException
 all=$(helm template x "$CHART")
 echo "$all" | yq ea 'select(.kind=="ClusterRoleBinding" or .kind=="PolicyException")' | grep -q . && fail "unexpected binding or PolicyException"

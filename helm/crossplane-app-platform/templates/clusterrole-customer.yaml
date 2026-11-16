@@ -1,6 +1,6 @@
 # Lets subjects bound to the Kubernetes default admin/edit/view roles in an org-* namespace
 # use HelmApp there. Aggregation adds rules only; the namespace comes from the customer's
-# RoleBinding, so nothing is granted outside it. See docs/customer-rbac.md.
+# RoleBinding, so nothing is granted outside it. The status is read-only for every role: Crossplane writes it. See docs/customer-rbac.md.
 {{- range $role, $verbs := dict "admin" (list "*") "edit" (list "*") "view" (list "get" "list" "watch") }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -12,6 +12,9 @@ metadata:
     {{- include "labels.common" $ | nindent 4 }}
 rules:
   - apiGroups: [apps.giantswarm.io]
-    resources: [helmapps, helmapps/status]
+    resources: [helmapps]
     verbs: {{ $verbs | toJson }}
+  - apiGroups: [apps.giantswarm.io]
+    resources: [helmapps/status]
+    verbs: [get, list, watch]
 {{- end }}
