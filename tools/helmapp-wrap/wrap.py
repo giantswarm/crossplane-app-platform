@@ -120,7 +120,12 @@ def wrap(hr, ocirepo, app, mc_name=None):
 def _deployed_version(hr, ocirepo):
     history = (hr.get("status") or {}).get("history") or []
     if history and history[0].get("chartVersion"):
-        return history[0]["chartVersion"]
+        version = history[0]["chartVersion"]
+        # helm-controller appends '+<first 12 hex of the OCI digest>'; the registry tag does not have it.
+        digest = history[0].get("ociDigest", "").partition(":")[2][:12]
+        if digest and version.endswith("+" + digest):
+            version = version[: -len(digest) - 1]
+        return version
     tag = ocirepo["spec"].get("ref", {}).get("tag")
     if not tag:
         raise Stop("no deployed chart version in status.history and no spec.ref.tag on the OCIRepository")

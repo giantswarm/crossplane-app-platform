@@ -216,3 +216,19 @@ def test_plan_reads_mc_name_for_in_cluster(monkeypatch, capsys):
     assert "kind: HelmApp" in out.out
     assert "Case B" in out.err and "graveler-acme01" in out.err
     assert "delete-suspended" in out.err
+
+
+def test_version_drops_the_flux_oci_digest_suffix():
+    # helm-controller writes '<chart version>+<first 12 hex of the OCI digest>'; the registry tag has no suffix.
+    hr = converter_hr()
+    hr["status"]["history"] = [{"chartVersion": "2.11.0+44ca5d53b7f2",
+                                "ociDigest": "sha256:44ca5d53b7f2d130d3e63df7d8048aac7cf09c5521fedd3b3ca7b8c3b94ff6ad"}]
+    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    assert helmapp["spec"]["chart"]["version"] == "2.11.0"
+
+
+def test_version_keeps_build_metadata_of_the_chart():
+    hr = converter_hr()
+    hr["status"]["history"] = [{"chartVersion": "2.11.0+build.7", "ociDigest": "sha256:44ca5d53b7f2d130"}]
+    helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
+    assert helmapp["spec"]["chart"]["version"] == "2.11.0+build.7"
