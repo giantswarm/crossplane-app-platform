@@ -156,8 +156,11 @@ def _strip_derived_layers(values_from, cluster, app, warnings):
     return kept
 
 
-def steps(case, ns, hr_name, app, cluster):
+def steps(case, ns, hr_name, app, cluster, oci):
     new = f"{cluster}-{app}"
+    # The ResourceSet names its OCIRepository after the app: a same-name one is taken over and a git prune deletes it.
+    last = (f"WRITE (git): add {KUSTOMIZE_PRUNE}: disabled to OCIRepository {ns}/{oci}, then remove it from git"
+            if oci == app else f"WRITE (git): remove the unused OCIRepository {ns}/{oci} from git")
     if case == "A":
         return [
             f"WRITE (git): add {KUSTOMIZE_PRUNE}: disabled to HelmRelease {ns}/{hr_name}; let the Kustomization apply it",
@@ -166,6 +169,7 @@ def steps(case, ns, hr_name, app, cluster):
             f"READ: HelmRelease {ns}/{hr_name} is still there and Ready=True",
             f"WRITE (git): add the HelmApp {ns}/{app}",
             "READ: the HelmApp is Ready=True, the HelmRelease has the ResourceSet labels, helm history has no uninstall",
+            last,
         ]
     return [
         f"WRITE (git): add {KUSTOMIZE_PRUNE}: disabled and spec.suspend: true to HelmRelease {ns}/{hr_name}",
@@ -175,6 +179,7 @@ def steps(case, ns, hr_name, app, cluster):
         "READ: the Helm release secrets are still there and helm history has the same last revision",
         f"WRITE (git): add the HelmApp {ns}/{app}",
         f"READ: HelmRelease {ns}/{new} runs one upgrade, helm history has no uninstall, the HelmApp is Ready=True",
+        last,
     ]
 
 
@@ -226,7 +231,7 @@ def cmd_plan(a):
     annotations = hr["metadata"].get("annotations") or {}
     print(f"live: suspend={hr['spec'].get('suspend', False)} {KUSTOMIZE_PRUNE}={annotations.get(KUSTOMIZE_PRUNE)}",
           file=err)
-    for i, s in enumerate(steps(case, a.namespace, a.name, a.app, cluster), 1):
+    for i, s in enumerate(steps(case, a.namespace, a.name, a.app, cluster, ocirepo["metadata"]["name"]), 1):
         print(f"{i}. {s}", file=err)
 
 

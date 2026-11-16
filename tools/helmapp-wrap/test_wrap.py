@@ -232,3 +232,8 @@ def test_version_keeps_build_metadata_of_the_chart():
     hr["status"]["history"] = [{"chartVersion": "2.11.0+build.7", "ociDigest": "sha256:44ca5d53b7f2d130"}]
     helmapp, _, _ = wrap.wrap(hr, ocirepo(), "ingress-nginx")
     assert helmapp["spec"]["chart"]["version"] == "2.11.0+build.7"
+
+
+def test_steps_end_with_the_old_ocirepository():
+    assert wrap.steps("B", "ns", "old", "app", "mc", "old")[-1].endswith("remove the unused OCIRepository ns/old from git")
+    assert "prune" in wrap.steps("A", "ns", "app", "app", "mc", "app")[-1]
