@@ -12,3 +12,7 @@
 # --upgrade-tests-app-file, which a new repository has not got.
 app-tests-deploy-namespace: default
 skip-steps: [functional, upgrade]
+# The chart renders a Crossplane XRD and Composition. The kind cluster has no Crossplane, so ATS
+# applies these CRDs (Crossplane v2.4.3, downloaded verbatim from crossplane/crossplane
+# cluster/crds/) before the install instead of its default bundle, which the chart does not need.
+cluster-crds: tests/ats/crds
