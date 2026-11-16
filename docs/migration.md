@@ -32,12 +32,12 @@ Pick `<app>` so that Case A applies when you can: it has fewer steps. The HelmAp
 | `spec.kubeConfig.secretRef.name` = `<cluster>-kubeconfig` | `spec.targets.static: [{cluster: <cluster>}]` |
 | no `spec.kubeConfig` | `spec.targets.static: [{inCluster: true}]` |
 | `spec.targetNamespace`, `spec.storageNamespace` (remote) | `spec.namespace` (both must be equal) |
-| the chart name and source URL | `spec.chart.name`, `spec.chart.repository` (OCI only), `spec.chart.secretRef` for a private registry |
+| the chart name and source URL | `spec.chart.name`, `spec.chart.repository` (must start with `oci://`, the XRD rejects others), `spec.chart.secretRef` for a private registry |
 | the deployed chart version | `spec.chart.version`: pin the exact deployed version for the move, widen it later |
 | `spec.values` | `spec.values` |
 | `spec.valuesFrom` | `spec.valuesFrom`, minus the layers the HelmApp adds by itself (below) |
 | `spec.dependsOn` | `spec.dependsOn.static`, or `spec.dependsOn.templated` with `%cluster%` |
-| `spec.suspend` | `spec.suspend` |
+| `spec.suspend` | none: `helmapp-wrap` only warns (Case B suspends the old HelmRelease on purpose). Set `spec.suspend` on the HelmApp only if the new HelmRelease must start suspended |
 
 Stop and do not migrate when one of these is true:
 
@@ -45,7 +45,7 @@ Stop and do not migrate when one of these is true:
   and a different storage namespace does not find the release.
 - An in-cluster HelmRelease has `targetNamespace` or `storageNamespace` different from `<ns>`. The HelmApp sets neither
   for an in-cluster target, so Helm uses `<ns>`.
-- The chart is not in an OCI registry.
+- The chart is not in an OCI registry (the XRD requires `spec.chart.repository` to start with `oci://`).
 
 Possible differences after the move. Read them before you start:
 
@@ -99,22 +99,27 @@ Write the HelmApp manifest. Render it offline with the function pipeline (see `t
    changed). The ResourceSet takes field ownership from `kustomize-controller` (Flux Operator
    `internal/controller/common.go` `takeOwnershipFrom`), so fields the HelmApp does not set (for example an old
    `spec.chart`, `timeout`) are removed from the object.
+7. **WRITE** (git) the old OCIRepository `<old-oci>`: if it is named `<app>`, add `kustomize.toolkit.fluxcd.io/prune:
+   disabled` to it, then remove it from git (the ResourceSet names its OCIRepository after the app and takes a
+   same-name one over); otherwise remove the unused OCIRepository from git.
 
 ## 5b. Case B: different name
 
 1. **WRITE** (git) add `kustomize.toolkit.fluxcd.io/prune: disabled` and `spec.suspend: true` to the old HelmRelease in
    its git source. Let the Kustomization apply it. The same note about other owners as in Case A step 2 applies.
 2. **READ** check both on the live object: `.spec.suspend` is `true` and the annotation is there.
-3. **WRITE** delete the old HelmRelease while it is suspended:
-   `kubectl --context <mc-ctx> -n <ns> delete helmrelease <old-hr>`.
+3. **WRITE** (git) remove the old HelmRelease from git. The Kustomization does not prune it (prune is disabled).
+4. **WRITE** delete the old HelmRelease while it is suspended:
+   `helmapp-wrap delete-suspended --context <mc-context> -n <ns> <old-hr> --yes`, or
+   `kubectl --context <mc-context> -n <ns> delete helmrelease <old-hr>`.
    helm-controller uninstalls on delete only when the object is not suspended, so this leaves the release.
-4. **WRITE** (git) remove the old HelmRelease from git.
 5. **READ** check nothing was uninstalled: the Helm release secrets are still there, `helm history` has the same last
    revision, and the workload is untouched.
 6. **WRITE** (git) add the HelmApp.
 7. **READ** check the adoption: the new HelmRelease `<cluster>-<app>` runs one `upgrade` (log: `release not managed by
    controller: found existing release in storage`, then `running 'upgrade' action`), `helm history` shows a new
    revision with "Upgrade complete" and no uninstall, and the HelmApp is `Ready=True`.
+8. **WRITE** (git) the old OCIRepository `<old-oci>`: same as Case A step 7.
 
 ## 5c. Cluster chart wrap
 

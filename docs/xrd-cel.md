@@ -11,4 +11,9 @@ Yes. Checked against crossplane-runtime v2.4.3 (the version Crossplane v2.4.3 us
 - Rules on nested fields (for example `spec.chart`) travel with the property: `maps.Copy(cSpec.Properties, xSpec.Properties)` copies whole `JSONSchemaProps` values (crd.go:206).
 
 Not verified: that a live API server rejects an object (no cluster was touched). `crossplane composition render`
-does not validate against the XRD. The XRD has one nested rule on `spec.chart` for the PoC to confirm on a cluster.
+does not validate against the XRD. The XRD has CEL rules on nested fields (`spec.chart`, `spec.chart.verify`,
+`spec.targets.static` and its items, each schedule window) for the PoC to confirm on a cluster.
+
+`make test-cel` runs them offline with `crossplane resource validate`, and also runs the API server CRD validation
+with its CEL cost estimator (`tests/cel/cost`, needs Go modules), which `resource validate` does not run. A rule over
+the cost budget makes Crossplane fail to create the CRD on a real cluster.
