@@ -109,12 +109,18 @@ _hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
 _ocds = option("params").ocds
 _exported = _ocds?.rsip?.Resource?.status?.exportedInputs or []
 _hr = lambda t -> {str:} { (_er[_hr_key(t)] or [{}])[0]?.Resource or {} }
+_want = (_exported or [{}])[0]?.tag or ""
 _target = lambda t -> {str:} {
     _h = _hr(t)
+    _last = (_h.status?.history or [{}])[0]
+    # helm-controller appends '+<first 12 hex of the OCI digest>' to the chart version; the registry tag does not have it.
+    _d = (_last?.ociDigest or "").removeprefix("sha256:")[:12]
+    _v = (_last?.chartVersion or "").removesuffix("+" + _d) if _d else (_last?.chartVersion or "")
     {
         cluster = _tcluster(t)
-        version = ((_h.status?.history or [{}])[0]?.chartVersion) or ""
-        ready = _is_ready(_h)
+        version = _v
+        # A Ready condition from an older spec or an older version is stale: the ResourceSet may not have applied the new one yet.
+        ready = _is_ready(_h) and _h.status?.observedGeneration == _h.metadata?.generation and (not _want or _v == _want)
         message = ([c for c in (_h.status?.conditions or []) if c.type == "Ready"] or [{}])[0]?.message or ""
     }
 }
@@ -185,7 +191,7 @@ _hr_req = {
 _next = _ocds?.rsip?.Resource?.status?.nextSchedule?.when
 _status = {
     # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
-    version = (_exported or [{}])[0]?.tag or ([t.version for t in _targets if t.version] or [""])[0]
+    version = _want or ([t.version for t in _targets if t.version] or [""])[0]
     message = "Waiting for the input provider." if not _ocds?.rsip else "" if _exported else "No chart version exported for \"${spec.chart.version}\" (no matching tag, or waiting for the schedule). Existing HelmReleases are kept."
     targets = _targets
     # RSIP status.nextSchedule is set only while the schedule skips a run, so this is empty inside a window.

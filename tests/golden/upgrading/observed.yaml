@@ -1,0 +1,18 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+  annotations: {crossplane.io/composition-resource-name: rsip}
+status:
+  conditions: [{type: Ready, status: "True", reason: ReconciliationSucceeded}]
+  exportedInputs: [{id: "1", tag: 3.9.0, digest: "sha256:abc"}]
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+  annotations: {crossplane.io/composition-resource-name: rset}
+status:
+  conditions: [{type: Ready, status: "True", reason: ReconciliationSucceeded}]
