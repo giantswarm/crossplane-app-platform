@@ -136,4 +136,17 @@ spec:
                 namespace: {type: string, minLength: 1, maxLength: 63, description: Target namespace on the cluster}
             status:
               type: object
-              x-kubernetes-preserve-unknown-fields: true
+              # Crossplane applies the status with a typed server-side patch, so every field the composition writes is declared.
+              properties:
+                version: {type: string, description: The chart version the RSIP exported, or the last deployed one}
+                message: {type: string}
+                nextWindow: {type: string, description: Start of the next schedule window, while the schedule holds a run}
+                targets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cluster: {type: string}
+                      version: {type: string}
+                      ready: {type: boolean}
+                      message: {type: string}

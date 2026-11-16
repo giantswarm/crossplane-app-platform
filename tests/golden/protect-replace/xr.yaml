@@ -9,3 +9,4 @@ spec:
     - apiVersion: cluster.x-k8s.io/v1beta1
       kind: Cluster
       current: "status.phase == 'Provisioned'"
+  namespace: org-acme

@@ -6,3 +6,4 @@ spec:
   targets:
     static: [{inCluster: true}]
   protect: false
+  namespace: org-acme
