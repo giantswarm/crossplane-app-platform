@@ -31,6 +31,8 @@ WARN_FIELDS = {"interval", "timeout", "install", "upgrade", "rollback", "uninsta
 # fields (certSecretRef, provider, proxySecretRef, insecure, serviceAccountName, layerSelector, ...) stop the move.
 OCI_IGNORED = {"url", "ref", "interval", "timeout", "secretRef", "verify"}
 VERIFY_FIELDS = {"provider", "secretRef", "matchOIDCIdentity"}
+# The API server writes these defaults into every OCIRepository; a field at its default changes nothing.
+OCI_DEFAULTS = {"provider": "generic", "insecure": False}
 
 
 class Stop(Exception):
@@ -63,7 +65,8 @@ def wrap(hr, ocirepo, app, mc_name=None):
     if repository != DEFAULT_REPOSITORY:
         chart["repository"] = repository
     chart["version"] = _deployed_version(hr, ocirepo)
-    unmapped = sorted(set(ocirepo["spec"]) - OCI_IGNORED)
+    unmapped = sorted(k for k, v in ocirepo["spec"].items()
+                      if k not in OCI_IGNORED and not (k in OCI_DEFAULTS and v == OCI_DEFAULTS[k]))
     if unmapped:
         raise Stop(f"OCIRepository spec fields the HelmApp does not support: {', '.join(unmapped)}")
     if ocirepo["spec"].get("secretRef"):

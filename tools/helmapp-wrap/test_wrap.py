@@ -174,6 +174,13 @@ def test_ocirepository_unmapped_fields_stop(spec_change, message):
         wrap.wrap(converter_hr(), repo, "ingress-nginx")
 
 
+def test_ocirepository_api_defaults_do_not_stop():
+    # The API server writes these into every live OCIRepository (found on graveler, Case A test).
+    repo = ocirepo()
+    repo["spec"].update({"provider": "generic", "insecure": False})
+    wrap.wrap(converter_hr(), repo, "ingress-nginx")
+
+
 def test_in_cluster_needs_mc_name_and_own_namespace():
     hr = converter_hr(remote=False)
     with pytest.raises(Stop, match="MC name"):
