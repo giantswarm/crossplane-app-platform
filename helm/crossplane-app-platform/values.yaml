@@ -14,3 +14,8 @@ helmController:
   # CEL health checks (healthCheckExprs, waitStrategy) need helm-controller >= v1.5.0. Off: no HelmRelease gets them,
   # and a HelmApp with spec.healthCheckExprs is refused.
   healthChecks: false
+chartVerification:
+  # Cosign check of the charts from oci://gsoci.azurecr.io/charts/giantswarm, with the GS CircleCI keyless identity.
+  # Off for now: source-controller reads the cosign v3 signatures (OCI 1.1 referrers) only from v1.8.0, and charts
+  # released before architect-orb v8.2.0 have no signature. A HelmApp chart.verify always wins.
+  gsDefault: false

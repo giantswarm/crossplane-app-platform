@@ -16,7 +16,9 @@ _gs_verify = {
         subject = "^https://circleci\\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$"
     }]
 }
-_verify = spec.chart?.verify or (_gs_verify if repo == GS_REPO else Undefined)
+# GS_VERIFY comes from the chart value chartVerification.gsDefault. provider "none" turns the check off for one HelmApp.
+_verify = spec.chart?.verify or (_gs_verify if GS_VERIFY and repo == GS_REPO else Undefined)
+_verify = Undefined if _verify and _verify.provider == "none" else _verify
 # RSIP OCIArtifactTag exports the input keys id, tag, digest; flux-operator renders << >> templates.
 TAG = "<< inputs.tag | quote >>"
 FLUX_CP = "fluxcd.controlplane.io/v1"

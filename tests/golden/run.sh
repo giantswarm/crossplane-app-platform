@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Golden tests: crossplane composition render on each fixture dir vs expected.yaml. UPDATE=1 rewrites expected.yaml.
-# Optional per fixture: checks-off (chart default helmController.healthChecks=false), expect-error (render must fail with this text), observed.yaml (-o observed composed resources), required.yaml (-e extra resources).
+# Optional per fixture: checks-off (chart default helmController.healthChecks=false), verify-off (all chart defaults, so no GS cosign default), expect-error (render must fail with this text), observed.yaml (-o observed composed resources), required.yaml (-e extra resources).
 set -euo pipefail
 cd "$(dirname "$0")"
 XP=${CROSSPLANE:-../../bin/crossplane}
 CHART=../../helm/crossplane-app-platform
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-helm template x "$CHART" -s templates/composition.yaml --set helmController.healthChecks=true > "$tmp/composition.yaml"
+helm template x "$CHART" -s templates/composition.yaml --set helmController.healthChecks=true --set chartVerification.gsDefault=true > "$tmp/composition.yaml"
 # A fixture with a checks-off file renders with the chart default (healthChecks off).
-helm template x "$CHART" -s templates/composition.yaml > "$tmp/composition-off.yaml"
+helm template x "$CHART" -s templates/composition.yaml --set chartVerification.gsDefault=true > "$tmp/composition-off.yaml"
+helm template x "$CHART" -s templates/composition.yaml > "$tmp/composition-defaults.yaml"
 rc=0
 for d in */; do
   d=${d%/}
   extra=()
-  comp="$tmp/composition.yaml"; [ -f "$d/checks-off" ] && comp="$tmp/composition-off.yaml"
+  comp="$tmp/composition.yaml"; [ -f "$d/checks-off" ] && comp="$tmp/composition-off.yaml"; [ -f "$d/verify-off" ] && comp="$tmp/composition-defaults.yaml"
   [ -f "$d/observed.yaml" ] && extra+=(-o "$d/observed.yaml")
   [ -f "$d/required.yaml" ] && extra+=(-e "$d/required.yaml")
   if [ -f "$d/expect-error" ]; then

@@ -43,10 +43,13 @@ spec:
                         name: {type: string, minLength: 1}
                     verify:
                       type: object
-                      description: "Cosign verification of the chart. Default: GS CircleCI keyless identity for the GS registry, none elsewhere. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key)."
+                      description: "Cosign verification of the chart. Default: none, or the GS CircleCI keyless identity for the GS registry when the platform turns that on. Set provider cosign with matchOIDCIdentity (keyless) or secretRef (public key), or provider none to turn the check off."
                       required: [provider]
+                      x-kubernetes-validations:
+                        - rule: "self.provider != 'none' || (!has(self.secretRef) && !has(self.matchOIDCIdentity))"
+                          message: provider none takes no secretRef and no matchOIDCIdentity
                       properties:
-                        provider: {type: string, enum: [cosign]}
+                        provider: {type: string, enum: [cosign, none]}
                         secretRef:
                           type: object
                           required: [name]

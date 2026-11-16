@@ -20,4 +20,5 @@ spec:
           source: |
 {{ .Files.Get "files/merge/merge.k" | indent 12 }}
             HEALTH_CHECKS = {{ if .Values.helmController.healthChecks }}True{{ else }}False{{ end }}
+            GS_VERIFY = {{ if .Values.chartVerification.gsDefault }}True{{ else }}False{{ end }}
 {{ .Files.Get "files/helmapp.k" | indent 12 }}
