@@ -50,6 +50,8 @@ Set an exact version (`version: 2.3.1`) to pin it.
 | `version` | string, required | | An exact version (`1.2.3`) or a semver range (`>=1.2.0 <2.0.0`, `1.x`). The RSIP picks the newest matching tag. |
 | `semverFilter` | string | | Regular expression on the tags, applied before `version`, the same as OCIRepository `spec.ref.semverFilter`. Use it to pick a tag family, for example `-rc` or `-dev` tags. |
 | `secretRef.name` | string | | Registry credentials (a `kubernetes.io/dockerconfigjson` Secret) in the HelmApp namespace. Used by the RSIP and the OCIRepository. |
+| `certSecretRef.name` | string | | TLS Secret in the HelmApp namespace: `ca.crt` for a private CA, and/or `tls.crt` and `tls.key` for a client certificate. Used by the RSIP and the OCIRepository. |
+| `serviceAccountName` | string | | ServiceAccount in the HelmApp namespace. The RSIP and the OCIRepository use its `imagePullSecrets` as registry credentials. This is not the impersonation account: for that, use `helmReleaseOverrides.serviceAccountName`. |
 | `verify` | object | see below | Cosign verification of the chart. |
 
 `verify`:
@@ -210,7 +212,7 @@ The escape hatch for HelmRelease fields that the HelmApp does not have.
 | Field | Description |
 |---|---|
 | `releaseName` | Helm release name. Default `<app>`. |
-| `serviceAccountName` | Set on every HelmRelease and on the ResourceSet. Needed in customer namespaces when the original HelmRelease had one. |
+| `serviceAccountName` | Set on every HelmRelease and on the ResourceSet (impersonation). Not used for the registry; for that, use `chart.serviceAccountName`. Needed in customer namespaces when the original HelmRelease had one. |
 | any other key | Deep-merged into the `spec` of every HelmRelease. `null` removes a key. |
 
 ```yaml
@@ -309,7 +311,7 @@ spec:
           controller: {replicaCount: 4}
 ```
 
-A chart from another registry, with credentials and keyless signatures:
+A chart from another registry, with credentials, a private CA and keyless signatures:
 
 ```yaml
 spec:
@@ -318,6 +320,7 @@ spec:
     repository: oci://ghcr.io/stefanprodan/charts
     version: "6.x"
     secretRef: {name: ghcr-pull}
+    certSecretRef: {name: registry-ca}
     verify:
       provider: cosign
       matchOIDCIdentity:

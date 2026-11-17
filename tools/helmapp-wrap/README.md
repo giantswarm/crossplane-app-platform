@@ -275,7 +275,7 @@ A warning does not stop the tool. Read each one before you commit the HelmApp.
 
 - the chart is inline (`spec.chart`), or `chartRef` is not an OCIRepository, or the OCIRepository is in another
   namespace;
-- the OCIRepository has a field the HelmApp cannot express (for example `certSecretRef`), or its `verify` provider is
+- the OCIRepository has a field the HelmApp cannot express (for example `proxySecretRef` or `insecure`), or its `verify` provider is
   not cosign;
 - `kubeConfig` is not only `secretRef.name`, or the Secret is not `<cluster>-kubeconfig`;
 - `targetNamespace` differs from `storageNamespace`, or an in-cluster HelmRelease uses a namespace other than its own;

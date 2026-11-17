@@ -145,6 +145,13 @@ _day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/force
 _rsip_filter = _rsip_obs?.spec?.filter
 _rsip_current = _rsip_filter?.semver == spec.chart.version and _rsip_filter?.includeTag == spec.chart?.semverFilter
 
+# Registry access, the same on the RSIP and the OCIRepository. Without a provider both read the ServiceAccount's imagePullSecrets.
+_registry_access = {k: v for k, v in {
+    secretRef = spec.chart?.secretRef
+    certSecretRef = spec.chart?.certSecretRef
+    serviceAccountName = spec.chart?.serviceAccountName
+} if v}
+
 _rsip = {
     apiVersion = FLUX_CP
     kind = "ResourceSetInputProvider"
@@ -152,8 +159,7 @@ _rsip = {
     spec = {
         type = "OCIArtifactTag"
         url = chart_url
-        if spec.chart?.secretRef:
-            secretRef = spec.chart.secretRef
+        **_registry_access
         # chart.semverFilter has the same effect as OCIRepository spec.ref.semverFilter: a regex match on the tags before the semver range.
         # limit 1: export only the newest matching tag; the RSIP default is 100.
         "filter" = {semver = spec.chart.version, limit = 1} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
@@ -185,7 +191,7 @@ _rset = {
             apiVersion = "source.toolkit.fluxcd.io/v1"
             kind = "OCIRepository"
             metadata = {name = name, namespace = ns, **_prune_guard}
-            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {}), **({"secretRef" = spec.chart.secretRef} if spec.chart?.secretRef else {})}
+            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {}), **_registry_access}
         }] + [_helmrelease(t) for t in spec.targets.static]
     }
 }

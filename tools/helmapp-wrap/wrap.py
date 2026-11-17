@@ -27,9 +27,9 @@ MAPPED_FIELDS = {"chartRef", "releaseName", "serviceAccountName", "kubeConfig", 
 # The HelmApp sets its own value (or none) for these. The move changes them, but not the rendered chart.
 WARN_FIELDS = {"interval", "timeout", "install", "upgrade", "rollback", "uninstall", "test", "driftDetection",
                "maxHistory", "persistentClient"}
-# OCIRepository spec fields that do not change what the HelmApp pulls. verify and secretRef are mapped; all other
-# fields (certSecretRef, provider, proxySecretRef, insecure, serviceAccountName, layerSelector, ...) stop the move.
-OCI_IGNORED = {"url", "ref", "interval", "timeout", "secretRef", "verify"}
+# OCIRepository spec fields that do not change what the HelmApp pulls. verify, secretRef, certSecretRef and
+# serviceAccountName are mapped; all other fields (provider, proxySecretRef, insecure, layerSelector, ...) stop the move.
+OCI_IGNORED = {"url", "ref", "interval", "timeout", "secretRef", "certSecretRef", "serviceAccountName", "verify"}
 VERIFY_FIELDS = {"provider", "secretRef", "matchOIDCIdentity"}
 # The API server writes these defaults into every OCIRepository; a field at its default changes nothing.
 OCI_DEFAULTS = {"provider": "generic", "insecure": False}
@@ -71,6 +71,10 @@ def wrap(hr, ocirepo, app, mc_name=None):
         raise Stop(f"OCIRepository spec fields the HelmApp does not support: {', '.join(unmapped)}")
     if ocirepo["spec"].get("secretRef"):
         chart["secretRef"] = {"name": ocirepo["spec"]["secretRef"]["name"]}
+    if ocirepo["spec"].get("certSecretRef"):
+        chart["certSecretRef"] = {"name": ocirepo["spec"]["certSecretRef"]["name"]}
+    if ocirepo["spec"].get("serviceAccountName"):
+        chart["serviceAccountName"] = ocirepo["spec"]["serviceAccountName"]
     verify = ocirepo["spec"].get("verify")
     if verify:
         if set(verify) - VERIFY_FIELDS or verify.get("provider") != "cosign":

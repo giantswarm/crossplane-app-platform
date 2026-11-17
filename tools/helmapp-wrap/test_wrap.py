@@ -98,9 +98,12 @@ def test_cluster_chart_in_cluster_copies_value_layers_unchanged():
 def test_private_registry_and_custom_repository():
     repo = ocirepo(url="oci://registry.example.com/charts/app")
     repo["spec"]["secretRef"] = {"name": "pull"}
+    repo["spec"]["certSecretRef"] = {"name": "ca"}
+    repo["spec"]["serviceAccountName"] = "puller"
     helmapp, _, _, _ = wrap.wrap(converter_hr(), repo, "ingress-nginx")
     assert helmapp["spec"]["chart"] == {"name": "app", "repository": "oci://registry.example.com/charts",
-                                        "version": "3.2.1", "secretRef": {"name": "pull"}}
+                                        "version": "3.2.1", "secretRef": {"name": "pull"},
+                                        "certSecretRef": {"name": "ca"}, "serviceAccountName": "puller"}
 
 
 def test_flux_default_release_name():
@@ -161,7 +164,7 @@ def test_ocirepository_verify_maps_to_chart_verify():
 
 
 @pytest.mark.parametrize("spec_change, message", [
-    ({"certSecretRef": {"name": "ca"}}, "certSecretRef"),
+    ({"proxySecretRef": {"name": "proxy"}}, "proxySecretRef"),
     ({"provider": "azure"}, "provider"),
     ({"insecure": True}, "insecure"),
     ({"verify": {"provider": "notation"}}, "verify must be provider cosign"),
