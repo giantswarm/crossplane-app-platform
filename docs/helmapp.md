@@ -50,7 +50,7 @@ Set an exact version (`version: 2.3.1`) to pin it.
 | `version` | string, required | | An exact version (`1.2.3`) or a semver range (`>=1.2.0 <2.0.0`, `1.x`). The RSIP picks the newest matching tag. |
 | `semverFilter` | string | | Regular expression on the tags, applied before `version`, the same as OCIRepository `spec.ref.semverFilter`. Use it to pick a tag family, for example `-rc` or `-dev` tags. |
 | `secretRef.name` | string | | Registry credentials (a `kubernetes.io/dockerconfigjson` Secret) in the HelmApp namespace. Used by the RSIP and the OCIRepository. |
-| `certSecretRef.name` | string | | TLS Secret in the HelmApp namespace: `ca.crt` for a private CA, and/or `tls.crt` and `tls.key` for a client certificate. Used by the RSIP and the OCIRepository. |
+| `certSecretRef.name` | string | | TLS Secret in the HelmApp namespace: `ca.crt` for a private CA, and/or `tls.crt` and `tls.key` for a client certificate. Used by the RSIP and the OCIRepository. The RSIP trusts only the CAs in `ca.crt`; the OCIRepository adds them to the system CAs. So `ca.crt` must hold the CA that signs the registry certificate. |
 | `serviceAccountName` | string | | ServiceAccount in the HelmApp namespace. The RSIP and the OCIRepository use its `imagePullSecrets` as registry credentials. This is not the impersonation account: for that, use `helmReleaseOverrides.serviceAccountName`. |
 | `verify` | object | see below | Cosign verification of the chart. |
 
