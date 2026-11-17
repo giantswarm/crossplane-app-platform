@@ -1,5 +1,7 @@
 # Migrate a HelmRelease to a HelmApp
 
+The HelmApp fields are in [helmapp.md](helmapp.md). Usage and example output of the tool: [helmapp-wrap](../tools/helmapp-wrap/README.md).
+
 This procedure moves one existing Flux `HelmRelease` under a `HelmApp` without a Helm uninstall.
 The Helm release (its storage secrets and its workload) stays in place; only the object that delivers it changes.
 

@@ -110,7 +110,7 @@ Tests (all offline), with the tools pinned in `.circleci/custom.yml`:
 - `make test-wrap`: unit tests of [tools/helmapp-wrap](tools/helmapp-wrap/README.md) (uv), the tool that maps a
   HelmRelease to a HelmApp.
 
-CEL question: see [docs/xrd-cel.md](docs/xrd-cel.md). Move an existing HelmRelease under a HelmApp: see
+All HelmApp fields, defaults and examples: see [docs/helmapp.md](docs/helmapp.md). CEL question: see [docs/xrd-cel.md](docs/xrd-cel.md). Move an existing HelmRelease under a HelmApp: see
 [docs/migration.md](docs/migration.md).
 
 ## Credit
