@@ -1,0 +1,6 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-kcl
+spec:
+  package: gsoci.azurecr.io/giantswarm/crossplane-contrib-function-kcl:v0.11.6

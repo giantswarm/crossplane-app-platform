@@ -1,0 +1,12 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: ingress-nginx, namespace: org-acme}
+spec:
+  chart: {name: ingress-nginx, version: ">=3.0.0 <4.0.0"}
+  targets:
+    static: [{cluster: acme01}]
+  namespace: kube-system
+  schedule:
+    windows:
+      - {cron: "0 2 * * 6", timeZone: Europe/Berlin, window: 4h}
+    forceInstallOutsideWindow: true

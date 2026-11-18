@@ -1,0 +1,225 @@
+# Renders a HelmApp: one RSIP, and one ResourceSet holding the OCIRepository and one HelmRelease per target.
+oxr = option("params").oxr
+spec = oxr.spec
+name = oxr.metadata.name
+ns = oxr.metadata.namespace
+GS_REPO = "oci://gsoci.azurecr.io/charts/giantswarm"
+repo = spec.chart?.repository or GS_REPO
+chart_url = "${repo}/${spec.chart.name}"
+# Regexes as architect-orb verifies its own signatures: https://github.com/giantswarm/architect-orb/blob/main/docs/cosign-signing.md
+# shortcut: matches any CircleCI project. The Fulcio cert carries the org id only in an extension that Flux cannot match
+# (issuer is plain https://oidc.circleci.com, subject has the project id); upgrade if Flux gets extension matching.
+_gs_verify = {
+    provider = "cosign"
+    matchOIDCIdentity = [{
+        issuer = "^https://oidc\\.circleci\\.com$"
+        subject = "^https://circleci\\.com/api/v2/projects/[a-f0-9-]+/pipeline-definitions/[a-f0-9-]+$"
+    }]
+}
+# GS_VERIFY comes from the chart value chartVerification.gsDefault. provider "none" turns the check off for one HelmApp.
+_verify = spec.chart?.verify or (_gs_verify if GS_VERIFY and repo == GS_REPO else Undefined)
+_verify = Undefined if _verify and _verify.provider == "none" else _verify
+# RSIP OCIArtifactTag exports the input keys id, tag, digest; flux-operator renders << >> templates.
+TAG = "<< inputs.tag | quote >>"
+FLUX_CP = "fluxcd.controlplane.io/v1"
+
+# Protection: cluster-* and release-* charts are protected unless spec.protect says otherwise.
+_is_cluster_chart = spec.chart.name.startswith("cluster-") or spec.chart.name.startswith("release-")
+_protect = spec.protect if spec.protect != Undefined else _is_cluster_chart
+# shortcut: release-* gets the CAPI Cluster check too, as the ticket says; whether it fits every release-* chart is open (docs/protection.md).
+_default_checks = [{
+    apiVersion = "cluster.x-k8s.io/v1beta1"
+    kind = "Cluster"
+    current = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
+}] if HEALTH_CHECKS and _protect and _is_cluster_chart else []
+# The OCIRepository gets the guard too, so an orphaned HelmRelease keeps its source.
+_prune_guard = {annotations = {"fluxcd.controlplane.io/prune" = "disabled"}} if _protect else {}
+# A user entry for the same apiVersion and kind replaces the default, any other entry is added.
+# HEALTH_CHECKS comes from the chart value helmController.healthChecks, set in the Composition template.
+assert HEALTH_CHECKS or not spec.healthCheckExprs, "spec.healthCheckExprs needs helm-controller >= v1.5.0 (chart value helmController.healthChecks)"
+_user_checks = spec.healthCheckExprs or []
+_checks = [d for d in _default_checks if not [u for u in _user_checks if u.apiVersion == d.apiVersion and u.kind == d.kind]] + _user_checks
+
+_annot = lambda n: str -> {str:str} { {"krm.kcl.dev/composition-resource-name" = n} }
+# function-kcl leaves readiness Unspecified without krm.kcl.dev/ready, and then Crossplane never marks the HelmApp Ready.
+# A Ready condition of an older generation is stale: the controller did not act on the new spec yet.
+_is_ready = lambda r -> bool { len([c for c in (r?.status?.conditions or []) if c.type == "Ready" and c.status == "True" and (not c.observedGeneration or c.observedGeneration == r.metadata?.generation)]) > 0 }
+_ready_annot = lambda b: bool -> {str:str} { {"krm.kcl.dev/ready" = "True" if b else "False"} }
+
+# The MC name (for in-cluster targets) comes from the MC's own ConfigMap, read as an extra resource.
+_er = option("params")?.extraResources or {}
+_needs_mc = len([t for t in spec.targets.static if t?.inCluster]) > 0
+_mc_req = {"mc-metadata" = {apiVersion = "v1", kind = "ConfigMap", matchName = "management-cluster-metadata", matchNamespace = "flux-giantswarm"}} if _needs_mc else {}
+# The first function call has no extra resources yet; Crossplane calls again with them, so only a later call can fail.
+_mc_seen = "mc-metadata" in _er
+# First extra resource found under a requirement key, or {}.
+_er_first = lambda k: str -> {str:} { (_er[k] or [{}])[0]?.Resource or {} }
+MC = (_er_first("mc-metadata")?.data?.NAME or "") if _mc_seen else ""
+assert not _mc_seen or MC, "in-cluster target needs ConfigMap flux-giantswarm/management-cluster-metadata with key NAME"
+_tcluster = lambda t -> str { MC if t?.inCluster else t.cluster }
+# The HelmRelease name, and the key of its extra resource.
+_hr_name = lambda t -> str { "${_tcluster(t)}-${name}" }
+_hr_names = [_hr_name(t) for t in spec.targets.static]
+assert len(_hr_names) == len({n: 1 for n in _hr_names}), "two targets render the same HelmRelease name (cluster <mc> together with inCluster: true is one target); remove one"
+
+# valuesFrom layers, lowest to highest: derived cluster values, global, per target, derived user values; spec.values is applied last by Flux.
+_values_from = lambda t -> [{str:}] {
+    _derived = not t?.inCluster
+    _cluster = [{kind = "ConfigMap", name = "${t.cluster}-cluster-values", optional = True}] if _derived else []
+    _user = [{kind = "ConfigMap", name = "${t.cluster}-${name}-user-values", optional = True}, {kind = "Secret", name = "${t.cluster}-${name}-user-values", optional = True}] if _derived else []
+    _cluster + (spec.valuesFrom or []) + (t.valuesFrom or []) + _user
+}
+
+# Same value as the original HelmRelease, or none. GS Kyverno (flux-multi-tenancy) needs it outside the GS namespaces.
+_sa = spec.helmReleaseOverrides?.serviceAccountName or ""
+# Escape hatch: every other helmReleaseOverrides key is deep-merged into each HelmRelease spec (null removes a key).
+_overrides = {k: v for k, v in (spec.helmReleaseOverrides or {}) if k not in ["releaseName", "serviceAccountName"]}
+
+_helmrelease = lambda t -> {str:} {
+    _vf = _values_from(t)
+    _values = merge_values(spec.values or {}, t.values or {})
+    _cluster = _tcluster(t)
+    _deps = [{name = n} for n in spec.dependsOn?.static or []] + [{name = n.replace("%cluster%", _cluster)} for n in spec.dependsOn?.templated or []]
+    {
+        apiVersion = "helm.toolkit.fluxcd.io/v2"
+        kind = "HelmRelease"
+        metadata = {name = _hr_name(t), namespace = ns, **_prune_guard}
+        spec = merge_values({
+            interval = "5m"
+            releaseName = spec.helmReleaseOverrides?.releaseName or name
+            chartRef = {kind = "OCIRepository", name = name}
+            if _sa:
+                serviceAccountName = _sa
+            if not t.inCluster:
+                kubeConfig = {secretRef = {name = "${_cluster}-kubeconfig"}}
+                targetNamespace = spec.namespace
+                storageNamespace = spec.namespace
+            if _deps:
+                dependsOn = _deps
+            if spec.suspend:
+                suspend = True
+            install = {remediation = {retries = 10}}
+            upgrade = {remediation = {retries = 10, strategy = "rollback"}}
+            driftDetection = {mode = spec.driftDetection?.mode or "warn"}
+            # CEL checks run only with wait enabled (disableWait unset) and the poller strategy.
+            if _checks:
+                waitStrategy = {name = "poller"}
+                healthCheckExprs = _checks
+            if _vf:
+                valuesFrom = _vf
+            if _values:
+                values = _values
+        }, _overrides)
+    }
+}
+
+# Per-target HelmReleases are applied by the ResourceSet, not composed, so they are read as namespaced extra resources.
+_hr_key = lambda t -> str { "hr-${_tcluster(t)}" }
+_ocds = option("params").ocds
+_rsip_obs = _ocds?.rsip?.Resource
+_exported = _rsip_obs?.status?.exportedInputs or []
+_hr = lambda t -> {str:} { _er_first(_hr_key(t)) }
+_want = (_exported or [{}])[0]?.tag or ""
+_target = lambda t -> {str:} {
+    _h = _hr(t)
+    _last = (_h.status?.history or [{}])[0]
+    # helm-controller appends '+<first 12 hex of the OCI digest>' to the chart version; the registry tag does not have it.
+    _d = (_last?.ociDigest or "").removeprefix("sha256:")[:12]
+    _v = (_last?.chartVersion or "").removesuffix("+" + _d) if _d else (_last?.chartVersion or "")
+    {
+        cluster = _tcluster(t)
+        version = _v
+        # A Ready HelmRelease on another version is stale: the ResourceSet may not have applied the new spec yet.
+        ready = _is_ready(_h) and (not _want or _v == _want)
+        message = ([c for c in (_h.status?.conditions or []) if c.type == "Ready"] or [{}])[0]?.message or ""
+    }
+}
+_targets = [_target(t) for t in spec.targets.static]
+
+_windows = spec.schedule?.windows or []
+# Day 0: requestedAt == forceAt makes the RSIP skip its schedule check once (fluxcd/pkg apis/meta annotations.go:126-141); see docs/schedule.md.
+_day0 = {"reconcile.fluxcd.io/requestedAt" = "day-0", "reconcile.fluxcd.io/forceAt" = "day-0"} if _windows and spec.schedule?.forceInstallOutsideWindow else {}
+
+# The observed RSIP has the old filter until Crossplane applies the new one, so its exportedInputs are stale.
+# The API server adds limit itself, so only semver and includeTag are compared.
+_rsip_filter = _rsip_obs?.spec?.filter
+_rsip_current = _rsip_filter?.semver == spec.chart.version and _rsip_filter?.includeTag == spec.chart?.semverFilter
+
+# Registry access, the same on the RSIP and the OCIRepository. Without a provider both read the ServiceAccount's imagePullSecrets.
+_registry_access = {k: v for k, v in {
+    secretRef = spec.chart?.secretRef
+    certSecretRef = spec.chart?.certSecretRef
+    serviceAccountName = spec.chart?.serviceAccountName
+} if v}
+
+_rsip = {
+    apiVersion = FLUX_CP
+    kind = "ResourceSetInputProvider"
+    metadata = {name = name, namespace = ns, annotations = _annot("rsip") | _day0 | _ready_annot(_is_ready(_rsip_obs) and _rsip_current)}
+    spec = {
+        type = "OCIArtifactTag"
+        url = chart_url
+        **_registry_access
+        # chart.semverFilter has the same effect as OCIRepository spec.ref.semverFilter: a regex match on the tags before the semver range.
+        # limit 1: export only the newest matching tag; the RSIP default is 100.
+        "filter" = {semver = spec.chart.version, limit = 1} | ({includeTag = spec.chart.semverFilter} if spec.chart?.semverFilter else {})
+        if _windows:
+            schedule = _windows
+    }
+}
+
+_rset = {
+    apiVersion = FLUX_CP
+    kind = "ResourceSet"
+    # The HelmApp Ready condition also needs every target HelmRelease Ready.
+    metadata = {name = name, namespace = ns, annotations = _annot("rset") | _ready_annot(_is_ready(_ocds?.rset?.Resource) and _rsip_current and all t in _targets { t.ready })}
+    spec = {
+        inputsFrom = [{kind = "ResourceSetInputProvider", name = name}]
+        if _sa:
+            serviceAccountName = _sa
+        # Empty-input guard: exportedInputs is omitempty, so "empty" means absent. Without it the RSet prunes every HelmRelease.
+        dependsOn = [{
+            apiVersion = FLUX_CP
+            kind = "ResourceSetInputProvider"
+            # flux-operator rejects a dependsOn entry with a name and no namespace (checked live).
+            name = name
+            namespace = ns
+            ready = True
+            readyExpr = "has(status.exportedInputs) && size(status.exportedInputs) > 0"
+        }]
+        resources = [{
+            apiVersion = "source.toolkit.fluxcd.io/v1"
+            kind = "OCIRepository"
+            metadata = {name = name, namespace = ns, **_prune_guard}
+            spec = {interval = "5m", url = chart_url, ref = {tag = TAG}, **({"verify" = _verify} if _verify else {}), **_registry_access}
+        }] + [_helmrelease(t) for t in spec.targets.static]
+    }
+}
+
+_hr_req = {
+    apiVersion = "meta.krm.kcl.dev/v1alpha1"
+    kind = "ExtraResources"
+    requirements = {
+        _hr_key(t) = {
+            apiVersion = "helm.toolkit.fluxcd.io/v2"
+            kind = "HelmRelease"
+            matchName = _hr_name(t)
+            matchNamespace = ns
+        } for t in spec.targets.static
+    } | _mc_req
+}
+
+
+_next = _rsip_obs?.status?.nextSchedule?.when
+_status = {
+    # The last running version stays visible while the guard holds, because it comes from the HelmReleases.
+    version = _want or ([t.version for t in _targets if t.version] or [""])[0]
+    message = "Waiting for the input provider." if not _ocds?.rsip else "" if _exported else "No chart version exported for \"${spec.chart.version}\" (no matching tag, or waiting for the schedule). Existing HelmReleases are kept."
+    targets = _targets
+    # RSIP status.nextSchedule is set only while the schedule skips a run, so this is empty inside a window.
+    **({"nextWindow" = _next} if _next else {})
+}
+
+_dxr = {**option("params").dxr, status = _status}
+
+items = [_rsip, _rset, _hr_req, _dxr]

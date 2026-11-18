@@ -1,0 +1,4 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: management-cluster-metadata, namespace: flux-giantswarm}
+data: {NAME: mc01}

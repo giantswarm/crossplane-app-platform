@@ -88,6 +88,31 @@ Not following these limitations will most likely result in a broken deployment.
 
 - _add limitation_
 
+## HelmApp
+
+`helm/crossplane-app-platform` packages the HelmApp XRD, the Composition (function-kcl source in
+`helm/crossplane-app-platform/files/helmapp.k`) and the ClusterRoles: one `flux-operator` role that aggregates into
+Crossplane (it manages ResourceSets and RSIPs), and three customer roles (`helmapp-admin`, `helmapp-edit`,
+`helmapp-view`) that aggregate into the Kubernetes default roles, see [docs/customer-rbac.md](docs/customer-rbac.md).
+It uses the `function-kcl` Function the platform installs on every MC (management-cluster-bases
+`extras/crossplane/functions`); the golden tests use the same package. Nothing is deployed from here.
+
+Tests (all offline), with the tools pinned in `.circleci/custom.yml`:
+
+- `make test-golden`: `crossplane composition render` on every `tests/golden` fixture. Install the Crossplane v2 CLI
+  (pinned: v2.5.0) as `bin/crossplane`:
+  `curl -fsSL -o bin/crossplane https://cli.crossplane.io/stable/v2.5.0/bin/linux_amd64/crossplane && chmod +x bin/crossplane`.
+  Needs helm and Docker (function-kcl). `UPDATE=1` rewrites the expected files.
+- `make test-cel`: XRD schema and CEL rules with valid and rejected HelmApps, plus the API server CEL cost check
+  (`tests/cel/cost`, needs Go modules, so `go` and network on the first run). Needs `bin/crossplane`, helm and yq.
+- `make test-rbac`: `helm template` assertions for the customer roles (helm, yq).
+- `make test-kcl`: KCL unit tests of the values merge (kcl).
+- `make test-wrap`: unit tests of [tools/helmapp-wrap](tools/helmapp-wrap/README.md) (uv), the tool that maps a
+  HelmRelease to a HelmApp.
+
+All HelmApp fields, defaults and examples: see [docs/helmapp.md](docs/helmapp.md). CEL question: see [docs/xrd-cel.md](docs/xrd-cel.md). Move an existing HelmRelease under a HelmApp: see
+[docs/migration.md](docs/migration.md).
+
 ## Credit
 
 - https://github.com/giantswarm/crossplane-app-platform

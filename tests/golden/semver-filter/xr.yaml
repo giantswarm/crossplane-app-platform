@@ -1,0 +1,8 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: hello, namespace: org-acme}
+spec:
+  chart: {name: hello-world, version: ">=0.0.0-0", semverFilter: '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$'}
+  targets:
+    static: [{cluster: acme01}]
+  namespace: hello

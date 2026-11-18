@@ -1,0 +1,9 @@
+apiVersion: apps.giantswarm.io/v1alpha1
+kind: HelmApp
+metadata: {name: hello, namespace: org-acme}
+spec:
+  chart: {name: hello-world, version: "3.2.4"}
+  targets:
+    static: [{cluster: acme01}, {inCluster: true}]
+  namespace: hello
+  helmReleaseOverrides: {serviceAccountName: automation}

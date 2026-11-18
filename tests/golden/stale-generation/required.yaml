@@ -1,0 +1,8 @@
+# Ready=True, but for generation 1 of a generation-2 HelmRelease: the controller did not act on the new spec yet.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: acme01-ingress-nginx, namespace: org-acme, generation: 2}
+status:
+  observedGeneration: 2
+  history: [{chartVersion: 3.9.0+0123456789ab, ociDigest: "sha256:0123456789abcdef"}]
+  conditions: [{type: Ready, status: "True", reason: UpgradeSucceeded, message: Helm upgrade succeeded, observedGeneration: 1}]

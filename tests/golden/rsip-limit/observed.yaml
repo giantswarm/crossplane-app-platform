@@ -1,0 +1,17 @@
+# The observed RSIP has the API server's limit and exports several tags; the status takes the first one.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+  annotations: {crossplane.io/composition-resource-name: rsip}
+status:
+  conditions: [{type: Ready, status: "True", reason: ReconciliationSucceeded}]
+  exportedInputs:
+    - {id: "1", tag: 3.9.0, digest: "sha256:abc"}
+    - {id: "2", tag: 3.8.0, digest: "sha256:def"}
+    - {id: "3", tag: 3.7.0, digest: "sha256:ghi"}
+spec:
+  filter:
+    limit: 100
+    semver: '>=3.0.0 <4.0.0'

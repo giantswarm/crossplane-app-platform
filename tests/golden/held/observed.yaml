@@ -1,0 +1,13 @@
+# RSIP is Ready but exports nothing: the version range matches no tag.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: ingress-nginx
+  namespace: org-acme
+  annotations: {crossplane.io/composition-resource-name: rsip}
+status:
+  conditions: [{type: Ready, status: "True", reason: ReconciliationSucceeded}]
+spec:
+  filter:
+    limit: 100
+    semver: '>=3.0.0 <4.0.0'
