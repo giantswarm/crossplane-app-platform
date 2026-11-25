@@ -3,7 +3,7 @@ name = "helmapp-wrap"
 version = "0.1.0"
 description = "Move a Flux HelmRelease under a HelmApp (docs/migration.md)"
 requires-python = ">=3.12"
-dependencies = ["pyyaml==6.0.3"]
+dependencies = ["pyyaml==6.0.4"]
 
 [project.scripts]
 helmapp-wrap = "wrap:main"
